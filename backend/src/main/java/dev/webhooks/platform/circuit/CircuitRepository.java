@@ -83,6 +83,10 @@ public class CircuitRepository {
                                 OR (e.circuit_state = 'HALF_OPEN' AND NOT EXISTS (
                                         SELECT 1 FROM deliveries p WHERE p.id = e.half_open_probe_id
                                           AND p.status IN ('PENDING', 'RETRYING', 'IN_FLIGHT'))))
+                              -- Only circuits with something to probe count against the limit; idle ones
+                              -- would otherwise fill every batch and starve endpoints that have work.
+                              AND EXISTS (SELECT 1 FROM deliveries d WHERE d.endpoint_id = e.id
+                                          AND d.status IN ('PENDING', 'RETRYING') AND d.next_attempt_at <= :now)
                             LIMIT :limit
                             FOR UPDATE OF e SKIP LOCKED
                         ), probes AS (

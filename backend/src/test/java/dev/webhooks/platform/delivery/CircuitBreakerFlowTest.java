@@ -232,6 +232,31 @@ class CircuitBreakerFlowTest {
         assertThat(probeId()).isEqualTo(ids.get(1));
     }
 
+    /**
+     * Regression (independent PR #6 check): open circuits with nothing queued used to fill the probe
+     * batch on every pass, so an endpoint that did have work never got its probe.
+     */
+    @Test
+    void idleOpenCircuitsCannotStarveAnEndpointWithWorkOfItsProbe() throws Exception {
+        jdbc.sql("UPDATE endpoints SET circuit_state = 'CLOSED', half_open_probe_id = NULL, circuit_retry_at = NULL")
+                .update();
+        submit(3); // queued for 'breaker' only; the idle endpoints are created afterwards
+        String open = """
+                UPDATE endpoints SET circuit_state = 'OPEN', consecutive_failures = 10, circuit_open_count = 1,
+                       circuit_opened_at = now(), circuit_retry_at = now() - CAST(:ago AS interval)
+                WHERE id = :id
+                """;
+        for (int i = 0; i < 5; i++) {
+            UUID idle = createEndpoint(account, "idle-" + i, receiver.url("/idle"));
+            jdbc.sql(open).param("ago", "2 hours").param("id", idle).update();
+        }
+        jdbc.sql(open).param("ago", "1 minute").param("id", endpointId).update();
+
+        assertThat(circuits.startProbes(3)).isEqualTo(1);
+        assertThat(endpoint().get("circuit").get("state").asString()).isEqualTo("HALF_OPEN");
+        assertThat(probeId()).isNotNull();
+    }
+
     @Test
     void circuitCanBeResetByHandFromTheDashboardOnly() throws Exception {
         jdbc.sql("""
