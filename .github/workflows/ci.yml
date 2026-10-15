@@ -65,6 +65,25 @@ jobs:
           scripts/demo.sh success
           scripts/demo.sh recover
           scripts/demo.sh replay
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Browser end-to-end tests (Playwright)
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
       - name: Crash recovery (SIGKILL the app container mid-delivery)
         env:
           SIMULATOR_URL_FROM_API: http://simulator:9090
