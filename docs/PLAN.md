@@ -893,3 +893,9 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **Delivery tests use an in-process JDK `HttpServer` instead of WireMock.** This avoids a Jetty/Jackson 2 dependency tree for something about 100 lines can do.
 - **Passwords are hashed with bcrypt for now,** via Spring Security's delegating encoder. Argon2id needs BouncyCastle; that choice is made in Stage 5, when login is built.
 - **Response bodies:** only the first 2 KB is read from the socket. The rest is discarded by closing the connection.
+
+**Stage 2**
+- **Retry policy settings:** `webhooks.retry.{max-attempts, base-delay, max-delay, max-retry-after}` replaces the Stage 1 `webhooks.delivery.max-attempts`. Defaults are as in §7.3. The `local` profile uses 4 attempts and a 2s base delay so demos run in seconds.
+- **`Retry-After` is honoured only on 429 and 503.** On other statuses it is ignored and not stored on the attempt, because it carries no scheduling meaning there. It can only lengthen a delay, never shorten one, and never adds attempts.
+- **Endpoint deleted mid-attempt:** if a retryable failure comes back after its endpoint was deleted, the delivery is marked `CANCELLED` instead of `RETRYING`, in the same conditional update.
+- **The simulator accepts configurable response headers** (e.g. `Retry-After`). Scripted response sequences and intermittent failures are still planned for Stage 3. In the meantime, `scripts/demo.sh` reconfigures the receiver while a delivery is in progress.

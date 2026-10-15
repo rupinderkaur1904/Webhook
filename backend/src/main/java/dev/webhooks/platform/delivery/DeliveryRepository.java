@@ -161,6 +161,29 @@ public class DeliveryRepository {
                 .update() == 1;
     }
 
+    /**
+     * Schedules the next attempt. If the endpoint was deleted while the attempt was in flight the
+     * delivery is cancelled instead, so no further attempts are made to a removed endpoint.
+     */
+    public boolean markRetrying(ClaimedDelivery claim, java.time.Duration delay, Integer responseStatus, String error) {
+        return jdbc.sql("""
+                        UPDATE deliveries d
+                        SET status = CASE WHEN e.deleted_at IS NULL THEN 'RETRYING' ELSE 'CANCELLED' END,
+                            next_attempt_at = CASE WHEN e.deleted_at IS NULL
+                                                   THEN now() + make_interval(secs => :delaySeconds) END,
+                            last_response_status = :responseStatus, last_error = :error,
+                            lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+                        FROM endpoints e
+                        WHERE d.id = :id AND d.status = 'IN_FLIGHT' AND d.lease_token = :token AND e.id = d.endpoint_id
+                        """)
+                .param("id", claim.deliveryId())
+                .param("token", claim.leaseToken())
+                .param("delaySeconds", delay.toMillis() / 1000.0)
+                .param("responseStatus", responseStatus)
+                .param("error", error)
+                .update() == 1;
+    }
+
     /** What a finished attempt observed, in storable form. */
     public record AttemptRecord(
             String outcome,

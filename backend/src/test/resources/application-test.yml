@@ -7,6 +7,11 @@ webhooks:
   delivery:
     connect-timeout: 1s
     response-timeout: 2s
+  retry:
+    max-attempts: 3
+    base-delay: 10s
+    max-delay: 60s
+    max-retry-after: 300s
   ssrf:
     # Host-only entry: the in-process test receiver listens on a random port.
     allowed-hosts:

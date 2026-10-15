@@ -58,6 +58,32 @@ describe('DeliveryDetailPage', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/deliveries/d1');
   });
 
+  it('shows the retry schedule and why each failed attempt is retryable', async () => {
+    const retrying: DeliveryDetail = {
+      ...detail,
+      delivery: { ...detail.delivery, status: 'RETRYING', attemptCount: 1, maxAttempts: 8, nextAttemptAt: '2026-10-15T04:01:00Z' },
+      attempts: [
+        {
+          ...detail.attempts[0],
+          status: 'FAILED',
+          outcome: 'RATE_LIMITED',
+          retryable: true,
+          responseStatus: 429,
+          retryAfterSeconds: 60,
+          responseBodyExcerpt: null,
+        },
+      ],
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(retrying));
+    renderAt('/deliveries/d1', '/deliveries/:id', <DeliveryDetailPage />);
+
+    expect(await screen.findByText('Next attempt')).toBeInTheDocument();
+    expect(screen.getByText('RATE_LIMITED')).toBeInTheDocument();
+    expect(screen.getByText('retryable')).toBeInTheDocument();
+    expect(screen.getByText('Receiver asked to retry after 60s (Retry-After)')).toBeInTheDocument();
+    expect(screen.getByText('1 of 8')).toBeInTheDocument();
+  });
+
   it('shows not-found errors from the API', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 404, code: 'NOT_FOUND', detail: 'Delivery not found' }, 404));
     renderAt('/deliveries/missing', '/deliveries/:id', <DeliveryDetailPage />);

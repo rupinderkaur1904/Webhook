@@ -13,7 +13,7 @@ import org.junit.jupiter.params.provider.ValueSource;
 
 class DestinationPolicyTest {
 
-    private final DestinationPolicy policy = new DestinationPolicy(new WebhookProperties(null, null, null, null,
+    private final DestinationPolicy policy = new DestinationPolicy(new WebhookProperties(null, null, null, null, null,
             new WebhookProperties.Ssrf(List.of("simulator:9090"))));
 
     @ParameterizedTest

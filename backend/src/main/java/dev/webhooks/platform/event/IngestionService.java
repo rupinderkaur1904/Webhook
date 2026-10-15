@@ -89,7 +89,7 @@ public class IngestionService {
                     : checkExplicitEndpoints(accountId, endpointIds);
             for (UUID endpointId : targets) {
                 deliveries.insertPending(UUID.randomUUID(), accountId, eventId, endpointId,
-                        properties.delivery().maxAttempts());
+                        properties.retry().maxAttempts());
             }
             return new IngestionResult(response(events.find(accountId, eventId).orElseThrow()), false);
         });

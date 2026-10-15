@@ -28,6 +28,11 @@ function AttemptItem({ attempt }: { attempt: Attempt }) {
           {attempt.outcome ?? attempt.status}
         </Badge>
         {attempt.responseStatus != null && <Badge variant="outline">HTTP {attempt.responseStatus}</Badge>}
+        {attempt.retryable != null && (
+          <Badge color={attempt.retryable ? 'yellow' : 'gray'} variant="dot">
+            {attempt.retryable ? 'retryable' : 'not retryable'}
+          </Badge>
+        )}
         {attempt.durationMs != null && (
           <Text size="xs" c="dimmed">
             {attempt.durationMs} ms
@@ -37,6 +42,11 @@ function AttemptItem({ attempt }: { attempt: Attempt }) {
       <Text size="xs" c="dimmed">
         <Time value={attempt.startedAt} /> · {attempt.requestUrl}
       </Text>
+      {attempt.retryAfterSeconds != null && (
+        <Text size="xs" c="dimmed">
+          Receiver asked to retry after {attempt.retryAfterSeconds}s (Retry-After)
+        </Text>
+      )}
       {attempt.errorMessage && (
         <Text size="sm" c="red">
           {attempt.errorMessage}
@@ -82,6 +92,11 @@ export function DeliveryDetailPage() {
                 <Field label="Created">
                   <Time value={detail.delivery.createdAt} />
                 </Field>
+                {detail.delivery.status === 'RETRYING' && (
+                  <Field label="Next attempt">
+                    <Time value={detail.delivery.nextAttemptAt} />
+                  </Field>
+                )}
                 {detail.delivery.deadLetterReason && <Field label="Dead-letter reason">{detail.delivery.deadLetterReason}</Field>}
                 {detail.delivery.lastError && <Field label="Last error">{detail.delivery.lastError}</Field>}
                 {detail.delivery.deliveredAt && (

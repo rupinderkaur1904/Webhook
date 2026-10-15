@@ -9,14 +9,14 @@ The full design is in [docs/PLAN.md](docs/PLAN.md). This README describes what i
 | Stage | Scope | State |
 |---|---|---|
 | 1. End-to-end foundation | Schema, endpoints, idempotent ingestion, PostgreSQL queue + worker, signing, simulator, minimal dashboard | **Done** |
-| 2. Delivery reliability | Retry classification, exponential backoff with jitter, `Retry-After`, retry exhaustion | Next |
-| 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | Planned |
+| 2. Delivery reliability | Retry classification, exponential backoff with jitter, `Retry-After`, retry exhaustion | **Done** |
+| 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | Next |
 | 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | Planned |
 | 5. Security hardening | Login sessions, API-key management, full SSRF test matrix, rate limits, request limits | Planned |
 | 6. Reliability and observability | Circuit breaker, endpoint health, metrics, structured logging | Planned |
 | 7. Final verification | E2E suite, deployment, complete documentation | Planned |
 
-Until Stage 2, **every delivery has a budget of one attempt**. A failed attempt dead-letters the delivery with reason `RETRIES_EXHAUSTED`. Until Stage 5, the platform is meant for **local use only**, with a single bootstrap API key.
+Until Stage 5, the platform is meant for **local use only**, with a single bootstrap API key.
 
 ## Architecture
 
@@ -39,6 +39,36 @@ Producer --API key--> Spring Boot API --(one transaction)--> PostgreSQL (events,
 2. The worker claims due deliveries with `SELECT … FOR UPDATE SKIP LOCKED`. Each claim marks the delivery `IN_FLIGHT`, gives it a fresh lease token and expiry, and writes a `STARTED` attempt row. Concurrent workers always receive disjoint sets of deliveries.
 3. The request is signed and sent on a virtual thread. **No database transaction is open during the HTTP call.**
 4. The result is written in one short transaction. The delivery row is only updated if it still holds this attempt's lease token, so a stale worker cannot overwrite newer state. Its observation is still kept in the attempt history.
+
+### Retries and dead-lettering
+
+Each failed attempt is classified first.
+
+| Outcome | Retried? |
+|---|---|
+| 2xx | Success: `DELIVERED` |
+| 408, 425, 429, 5xx except 501 and 505 | Yes |
+| Timeouts, refused or reset connections, DNS failures, TLS errors | Yes |
+| 3xx (redirects are never followed), other 4xx, 501, 505, invalid responses | No: `DEAD_LETTERED` / `NON_RETRYABLE_RESPONSE` |
+| Destination resolves to a blocked address | No: `DEAD_LETTERED` / `DESTINATION_BLOCKED` |
+
+A retryable failure with attempts left becomes `RETRYING`, and its `next_attempt_at` is stored in PostgreSQL. No in-memory timers are used, so a restarted instance simply picks the delivery up when it is due. The delay works like this:
+- Raw delay: `min(max-delay, base-delay × 2^(n−1))` after attempt *n*.
+- Equal jitter: a random value between half the raw delay and the full raw delay. This spreads retries without ever dropping below half the intended backoff.
+- On 429 and 503, a valid `Retry-After` (seconds or HTTP-date) raises the delay to at least the requested value, capped at `max-retry-after`. `Retry-After` never adds attempts.
+
+When a retryable failure happens on the last attempt, the delivery becomes `DEAD_LETTERED` / `RETRIES_EXHAUSTED`. Every attempt is kept with its outcome, status code, latency, retryability and `Retry-After`.
+
+Retry settings live under `webhooks.retry.*`:
+
+| Setting | Default | `local` profile |
+|---|---|---|
+| `max-attempts` | 8 | 4 |
+| `base-delay` | 30s | 2s |
+| `max-delay` | 1h | 20s |
+| `max-retry-after` | 6h | 60s |
+
+With the defaults, retries come after about 30s, 1m, 2m, 4m, 8m, 16m and 32m (before jitter). The budget is copied onto each delivery when it is created, so changing the configuration never changes work that is already queued.
 
 ### What receivers get
 
@@ -134,14 +164,18 @@ The app refuses to start without a valid encryption key.
 
 ### Demo
 
-With the backend and simulator running:
+With the backend (`local` profile) and simulator running:
 
 ```bash
-scripts/demo.sh success   # submit -> persist -> deliver -> record -> inspect; simulator reports signature VALID
-scripts/demo.sh failure   # receiver answers 500 -> attempt recorded, delivery dead-lettered (Stage 1: one attempt)
+scripts/demo.sh success      # delivered first time; simulator reports signature VALID
+scripts/demo.sh recover      # 500, 500, then the receiver recovers -> DELIVERED after 3 attempts
+scripts/demo.sh exhaust      # always 503 -> 4 attempts with growing delays -> DEAD_LETTERED / RETRIES_EXHAUSTED
+scripts/demo.sh rate-limit   # 429 + Retry-After: 5 -> next attempt waits 5s -> DELIVERED
+scripts/demo.sh permanent    # 400 -> DEAD_LETTERED / NON_RETRYABLE_RESPONSE after one attempt
+scripts/demo.sh idempotency  # same key twice -> 200 replay; same key, different payload -> 409
 ```
 
-Both scripts also show the idempotency contract: the same key and body return `200`, and the same key with a different body returns `409`.
+The simulator's request log marks repeated `webhook-id`s as duplicates. This shows why receivers must deduplicate.
 
 ## Testing
 
@@ -159,13 +193,15 @@ Integration tests always run against real PostgreSQL. They cover:
 - endpoint ownership;
 - SSRF rejection at registration and at send time;
 - signed delivery, verified with an independent HMAC implementation;
+- the retry policy (delay bounds for every attempt, the cap, jitter spread, `Retry-After`) and the full classification table;
+- retry flows on real PostgreSQL: recovery after failures, exhaustion, 429 and 503 `Retry-After`, permanent 4xx, cancellation when the endpoint is deleted mid-attempt;
+- a real stop-and-restart test, where one application instance schedules a retry and a fresh instance completes it;
 - recording of 5xx, timeouts, refused connections and redirects (redirects are never followed);
 - stale-lease fencing, and 8 workers claiming 400 deliveries concurrently with no duplicates;
 - the full worker flow end to end.
 
 ## Known limitations (current stage)
 
-- **No retries yet** (Stage 2). A failure dead-letters the delivery after one attempt.
 - **No lease reaper yet** (Stage 4). If the process dies mid-attempt, that delivery stays `IN_FLIGHT`. Its lease and `STARTED` attempt row are already recorded, so the Stage 4 reaper will recover it.
 - **API-key authentication only** (Stage 5). The dashboard keeps the key in `sessionStorage`. Stage 5 replaces this with HttpOnly session cookies.
 - **No ordering guarantee** between events.
