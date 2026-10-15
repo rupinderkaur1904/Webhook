@@ -4,6 +4,7 @@ import dev.webhooks.platform.common.ApiException;
 import dev.webhooks.platform.config.WebhookProperties;
 import dev.webhooks.platform.crypto.Tokens;
 import dev.webhooks.platform.delivery.DeliveryRepository;
+import dev.webhooks.platform.delivery.DeliveryStatus;
 import dev.webhooks.platform.event.EventDtos.AcceptedDelivery;
 import dev.webhooks.platform.event.EventDtos.CreateEventRequest;
 import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
@@ -164,7 +165,7 @@ public class IngestionService {
                         """)
                 .param("event", event.id())
                 .query((rs, n) -> new AcceptedDelivery(rs.getObject("id", UUID.class),
-                        rs.getObject("endpoint_id", UUID.class), rs.getString("status")))
+                        rs.getObject("endpoint_id", UUID.class), DeliveryStatus.valueOf(rs.getString("status"))))
                 .list();
         return new EventAcceptedResponse(event.id(), event.eventType(), event.idempotencyKey(), event.createdAt(),
                 new ArrayList<>(accepted));

@@ -1,5 +1,6 @@
 package dev.webhooks.platform.auth;
 
+import dev.webhooks.platform.common.ApiNullable;
 import static dev.webhooks.platform.common.Jdbc.instant;
 
 import java.time.Instant;
@@ -52,7 +53,7 @@ public class ApiKeyRepository {
                 .update();
     }
 
-    public record ApiKey(UUID id, String name, String prefix, Instant createdAt, Instant lastUsedAt, Instant revokedAt) {}
+    public record ApiKey(UUID id, String name, String prefix, Instant createdAt, @ApiNullable Instant lastUsedAt, @ApiNullable Instant revokedAt) {}
 
     public List<ApiKey> list(UUID accountId) {
         return jdbc.sql("""

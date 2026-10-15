@@ -1,5 +1,7 @@
 package dev.webhooks.platform.health;
 
+import dev.webhooks.platform.common.ApiNullable;
+import io.swagger.v3.oas.annotations.media.Schema;
 import dev.webhooks.platform.circuit.CircuitState;
 import java.time.Instant;
 
@@ -9,18 +11,18 @@ import java.time.Instant;
  */
 public record EndpointHealth(
         HealthStatus status,
-        String window,
+        @Schema(allowableValues = {"1h", "24h", "7d"}) String window,
         long attempts,
         long failedAttempts,
-        Double successRate,
-        Integer latencyP50Ms,
-        Integer latencyP95Ms,
+        @ApiNullable Double successRate,
+        @ApiNullable Integer latencyP50Ms,
+        @ApiNullable Integer latencyP95Ms,
         long deadLetters,
-        Instant lastSuccessAt,
-        LastFailure lastFailure) {
+        @ApiNullable Instant lastSuccessAt,
+        @ApiNullable LastFailure lastFailure) {
 
     /** The most recent failed attempt (any time, not only in the window). */
-    public record LastFailure(Instant at, String outcome, Integer responseStatus, String error) {}
+    public record LastFailure(Instant at, @ApiNullable String outcome, @ApiNullable Integer responseStatus, @ApiNullable String error) {}
 
     static final int DEGRADED_MIN_ATTEMPTS = 10;
     static final double DEGRADED_SUCCESS_RATE = 0.9;

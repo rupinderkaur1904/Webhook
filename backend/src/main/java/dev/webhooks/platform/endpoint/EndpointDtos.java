@@ -1,5 +1,6 @@
 package dev.webhooks.platform.endpoint;
 
+import dev.webhooks.platform.common.ApiNullable;
 import dev.webhooks.platform.circuit.CircuitView;
 import dev.webhooks.platform.health.EndpointHealth;
 import jakarta.validation.constraints.Max;
@@ -38,12 +39,12 @@ public final class EndpointDtos {
     public record EndpointResponse(
             UUID id,
             String name,
-            String description,
+            @ApiNullable String description,
             String url,
             List<String> eventTypes,
             boolean enabled,
             String secretPrefix,
-            Instant previousSecretExpiresAt,
+            @ApiNullable Instant previousSecretExpiresAt,
             CircuitView circuit,
             /** Health over the last 24 hours (docs/PLAN.md §7.5). */
             EndpointHealth health,
@@ -63,7 +64,7 @@ public final class EndpointDtos {
     public record RotateSecretRequest(@Min(0) @Max(72) Integer gracePeriodHours) {}
 
     /** Returned only on rotation: the new secret is never shown again. */
-    public record RotateSecretResponse(String secret, String secretPrefix, Instant previousSecretExpiresAt) {}
+    public record RotateSecretResponse(String secret, String secretPrefix, @ApiNullable Instant previousSecretExpiresAt) {}
 
     public record EndpointListResponse(List<EndpointResponse> items) {}
 

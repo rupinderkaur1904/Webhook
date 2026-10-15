@@ -1,5 +1,7 @@
 package dev.webhooks.platform.delivery;
 
+import dev.webhooks.platform.common.ApiNullable;
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -19,39 +21,41 @@ public final class DeliveryDtos {
             DeliveryStatus status,
             int attemptCount,
             int maxAttempts,
-            Integer lastResponseStatus,
-            String lastError,
-            Instant lastAttemptAt,
-            Instant nextAttemptAt,
-            DeadLetterReason deadLetterReason,
-            Instant deliveredAt,
-            Instant deadLetteredAt,
-            UUID replayOfDeliveryId,
+            @ApiNullable Integer lastResponseStatus,
+            @ApiNullable String lastError,
+            @ApiNullable Instant lastAttemptAt,
+            @ApiNullable Instant nextAttemptAt,
+            @ApiNullable DeadLetterReason deadLetterReason,
+            @ApiNullable Instant deliveredAt,
+            @ApiNullable Instant deadLetteredAt,
+            @ApiNullable UUID replayOfDeliveryId,
             UUID rootDeliveryId,
             Instant createdAt) {}
 
     public record AttemptView(
             UUID id,
             int attemptNumber,
-            String status,
-            String outcome,
-            Boolean retryable,
+            @Schema(allowableValues = {"STARTED", "SUCCEEDED", "FAILED", "ABANDONED"}) String status,
+            @ApiNullable String outcome,
+            @ApiNullable Boolean retryable,
             String requestUrl,
-            Integer responseStatus,
+            @ApiNullable Integer responseStatus,
             Map<String, String> responseHeaders,
-            String responseBodyExcerpt,
-            String errorMessage,
-            Integer retryAfterSeconds,
+            @ApiNullable String responseBodyExcerpt,
+            @ApiNullable String errorMessage,
+            @ApiNullable Integer retryAfterSeconds,
             Instant startedAt,
-            Instant finishedAt,
-            Integer durationMs,
+            @ApiNullable Instant finishedAt,
+            @ApiNullable Integer durationMs,
             boolean reportedAfterLeaseExpiry) {}
 
     /**
      * Whether the delivery can be replayed now. {@code reason} is one of
      * {@link ReplayService.IneligibleReason} when it cannot.
      */
-    public record ReplayEligibility(boolean eligible, String reason, int replayCount, int maxReplays) {}
+    public record ReplayEligibility(boolean eligible,
+            @ApiNullable @Schema(allowableValues = {"NOT_DEAD_LETTERED", "ENDPOINT_DELETED", "ENDPOINT_DISABLED",
+                    "REPLAY_IN_PROGRESS", "REPLAY_LIMIT_REACHED"}) String reason, int replayCount, int maxReplays) {}
 
     /**
      * {@code chain} lists every delivery of this event to this endpoint, oldest first: the original
@@ -66,7 +70,7 @@ public final class DeliveryDtos {
     public record DeliveryDetail(
             DeliverySummary delivery,
             String endpointUrl,
-            Lease lease,
+            @ApiNullable Lease lease,
             JsonNode eventBody,
             List<AttemptView> attempts,
             ReplayEligibility replayEligibility,

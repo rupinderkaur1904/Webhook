@@ -1,0 +1,1675 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "title" : "OpenAPI definition",
+    "version" : "v0"
+  },
+  "paths" : {
+    "/api/v1/events" : {
+      "get" : {
+        "tags" : [ "event-controller" ],
+        "operationId" : "list",
+        "parameters" : [ {
+          "name" : "eventType",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageEventSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "event-controller" ],
+        "operationId" : "submit",
+        "parameters" : [ {
+          "name" : "Idempotency-Key",
+          "in" : "header",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEventRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventAcceptedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints" : {
+      "get" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "list_1",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "create",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateEndpointRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointCreatedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints/{id}/test" : {
+      "post" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "sendTest",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventAcceptedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints/{id}/rotate-secret" : {
+      "post" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "rotateSecret",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RotateSecretRequest"
+              }
+            }
+          }
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RotateSecretResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints/{id}/circuit/reset" : {
+      "post" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "resetCircuit",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries/{id}/replay" : {
+      "post" : {
+        "tags" : [ "delivery-controller" ],
+        "operationId" : "replay",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DeliverySummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/register" : {
+      "post" : {
+        "tags" : [ "auth-controller" ],
+        "operationId" : "register",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/logout" : {
+      "post" : {
+        "tags" : [ "auth-controller" ],
+        "operationId" : "logout",
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login" : {
+      "post" : {
+        "tags" : [ "auth-controller" ],
+        "operationId" : "login",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys" : {
+      "get" : {
+        "tags" : [ "api-key-controller" ],
+        "operationId" : "list_2",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiKeyListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post" : {
+        "tags" : [ "api-key-controller" ],
+        "operationId" : "create_1",
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateApiKeyRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiKeyCreatedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints/{id}" : {
+      "get" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "get",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "delete",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      },
+      "patch" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "update",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/UpdateEndpointRequest"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/metrics/overview" : {
+      "get" : {
+        "tags" : [ "metrics-controller" ],
+        "operationId" : "overview",
+        "parameters" : [ {
+          "name" : "window",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "24h"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/Overview"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/events/{id}" : {
+      "get" : {
+        "tags" : [ "event-controller" ],
+        "operationId" : "get_1",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EventDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/endpoints/{id}/health" : {
+      "get" : {
+        "tags" : [ "endpoint-controller" ],
+        "operationId" : "health",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "window",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "default" : "24h"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/EndpointHealth"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries" : {
+      "get" : {
+        "tags" : [ "delivery-controller" ],
+        "operationId" : "list_3",
+        "parameters" : [ {
+          "name" : "status",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "enum" : [ "PENDING", "RETRYING", "IN_FLIGHT", "DELIVERED", "DEAD_LETTERED", "CANCELLED" ]
+            }
+          }
+        }, {
+          "name" : "endpointId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "eventId",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        }, {
+          "name" : "eventType",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "name" : "deadLetterReason",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "RETRIES_EXHAUSTED", "NON_RETRYABLE_RESPONSE", "DESTINATION_BLOCKED" ]
+          }
+        }, {
+          "name" : "from",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "to",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }, {
+          "name" : "limit",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "name" : "cursor",
+          "in" : "query",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageDeliverySummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/deliveries/{id}" : {
+      "get" : {
+        "tags" : [ "delivery-controller" ],
+        "operationId" : "get_2",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/DeliveryDetail"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/me" : {
+      "get" : {
+        "tags" : [ "auth-controller" ],
+        "operationId" : "me",
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/csrf" : {
+      "get" : {
+        "tags" : [ "auth-controller" ],
+        "operationId" : "csrf",
+        "parameters" : [ {
+          "name" : "token",
+          "in" : "query",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/components/schemas/CsrfToken"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK",
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/CsrfResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/api-keys/{id}" : {
+      "delete" : {
+        "tags" : [ "api-key-controller" ],
+        "operationId" : "revoke",
+        "parameters" : [ {
+          "name" : "id",
+          "in" : "path",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "uuid"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "OK"
+          }
+        }
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "CreateEventRequest" : {
+        "type" : "object",
+        "properties" : {
+          "eventType" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0,
+            "pattern" : "^[a-z0-9]+([._-][a-z0-9]+)*$"
+          },
+          "payload" : { },
+          "endpointIds" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "format" : "uuid"
+            },
+            "maxItems" : 50,
+            "minItems" : 0
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "eventType", "payload" ]
+      },
+      "AcceptedDelivery" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "endpointId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "PENDING", "RETRYING", "IN_FLIGHT", "DELIVERED", "DEAD_LETTERED", "CANCELLED" ]
+          }
+        },
+        "required" : [ "endpointId", "id", "status" ]
+      },
+      "EventAcceptedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "eventType" : {
+            "type" : "string"
+          },
+          "idempotencyKey" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "deliveries" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AcceptedDelivery"
+            }
+          }
+        },
+        "required" : [ "createdAt", "deliveries", "eventType", "id", "idempotencyKey" ]
+      },
+      "CreateEndpointRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
+          },
+          "description" : {
+            "type" : "string",
+            "maxLength" : 500,
+            "minLength" : 0
+          },
+          "url" : {
+            "type" : "string",
+            "maxLength" : 2048,
+            "minLength" : 0
+          },
+          "eventTypes" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "pattern" : "^[a-z0-9]+([._-][a-z0-9]+)*(\\.\\*)?$"
+            },
+            "maxItems" : 50,
+            "minItems" : 0
+          }
+        },
+        "required" : [ "name", "url" ]
+      },
+      "CircuitView" : {
+        "type" : "object",
+        "properties" : {
+          "state" : {
+            "type" : "string",
+            "enum" : [ "CLOSED", "OPEN", "HALF_OPEN" ]
+          },
+          "consecutiveFailures" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "openedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "retryAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "consecutiveFailures", "openedAt", "retryAt", "state" ]
+      },
+      "EndpointCreatedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "endpoint" : {
+            "$ref" : "#/components/schemas/EndpointResponse"
+          },
+          "secret" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "endpoint", "secret" ]
+      },
+      "EndpointHealth" : {
+        "type" : "object",
+        "properties" : {
+          "status" : {
+            "type" : "string",
+            "enum" : [ "DISABLED", "FAILING", "DEGRADED", "HEALTHY", "NO_DATA" ]
+          },
+          "window" : {
+            "type" : "string",
+            "enum" : [ "1h", "24h", "7d" ]
+          },
+          "attempts" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "failedAttempts" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "successRate" : {
+            "type" : [ "number", "null" ],
+            "format" : "double"
+          },
+          "latencyP50Ms" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "latencyP95Ms" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "deadLetters" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "lastSuccessAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "lastFailure" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/LastFailure"
+            }, {
+              "type" : "null"
+            } ]
+          }
+        },
+        "required" : [ "attempts", "deadLetters", "failedAttempts", "lastFailure", "lastSuccessAt", "latencyP50Ms", "latencyP95Ms", "status", "successRate", "window" ]
+      },
+      "EndpointResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "description" : {
+            "type" : [ "string", "null" ]
+          },
+          "url" : {
+            "type" : "string"
+          },
+          "eventTypes" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "enabled" : {
+            "type" : "boolean"
+          },
+          "secretPrefix" : {
+            "type" : "string"
+          },
+          "previousSecretExpiresAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "circuit" : {
+            "$ref" : "#/components/schemas/CircuitView"
+          },
+          "health" : {
+            "$ref" : "#/components/schemas/EndpointHealth"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "circuit", "createdAt", "description", "enabled", "eventTypes", "health", "id", "name", "previousSecretExpiresAt", "secretPrefix", "updatedAt", "url" ]
+      },
+      "LastFailure" : {
+        "type" : "object",
+        "properties" : {
+          "at" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "outcome" : {
+            "type" : [ "string", "null" ]
+          },
+          "responseStatus" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "error" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "at", "error", "outcome", "responseStatus" ]
+      },
+      "RotateSecretRequest" : {
+        "type" : "object",
+        "properties" : {
+          "gracePeriodHours" : {
+            "type" : "integer",
+            "format" : "int32",
+            "maximum" : 72,
+            "minimum" : 0
+          }
+        }
+      },
+      "RotateSecretResponse" : {
+        "type" : "object",
+        "properties" : {
+          "secret" : {
+            "type" : "string"
+          },
+          "secretPrefix" : {
+            "type" : "string"
+          },
+          "previousSecretExpiresAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "previousSecretExpiresAt", "secret", "secretPrefix" ]
+      },
+      "DeliverySummary" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "eventId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "endpointId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "endpointName" : {
+            "type" : "string"
+          },
+          "eventType" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "PENDING", "RETRYING", "IN_FLIGHT", "DELIVERED", "DEAD_LETTERED", "CANCELLED" ]
+          },
+          "attemptCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "maxAttempts" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "lastResponseStatus" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "lastError" : {
+            "type" : [ "string", "null" ]
+          },
+          "lastAttemptAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "nextAttemptAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "deadLetterReason" : {
+            "type" : [ "string", "null" ],
+            "enum" : [ "RETRIES_EXHAUSTED", "NON_RETRYABLE_RESPONSE", "DESTINATION_BLOCKED", null ]
+          },
+          "deliveredAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "deadLetteredAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "replayOfDeliveryId" : {
+            "type" : [ "string", "null" ],
+            "format" : "uuid"
+          },
+          "rootDeliveryId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "attemptCount", "createdAt", "deadLetterReason", "deadLetteredAt", "deliveredAt", "endpointId", "endpointName", "eventId", "eventType", "id", "lastAttemptAt", "lastError", "lastResponseStatus", "maxAttempts", "nextAttemptAt", "replayOfDeliveryId", "rootDeliveryId", "status" ]
+      },
+      "RegisterRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "format" : "email",
+            "maxLength" : 254,
+            "minLength" : 0
+          },
+          "password" : {
+            "type" : "string",
+            "maxLength" : 128,
+            "minLength" : 12
+          }
+        },
+        "required" : [ "email", "password" ]
+      },
+      "UserResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "email" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "email", "id" ]
+      },
+      "LoginRequest" : {
+        "type" : "object",
+        "properties" : {
+          "email" : {
+            "type" : "string",
+            "maxLength" : 254,
+            "minLength" : 0
+          },
+          "password" : {
+            "type" : "string",
+            "maxLength" : 128,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "email", "password" ]
+      },
+      "CreateApiKeyRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 0
+          }
+        },
+        "required" : [ "name" ]
+      },
+      "ApiKeyCreatedResponse" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "key" : {
+            "type" : "string"
+          },
+          "prefix" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "id", "key", "name", "prefix" ]
+      },
+      "UpdateEndpointRequest" : {
+        "type" : "object",
+        "properties" : {
+          "name" : {
+            "type" : "string",
+            "maxLength" : 100,
+            "minLength" : 1
+          },
+          "description" : {
+            "type" : "string",
+            "maxLength" : 500,
+            "minLength" : 0
+          },
+          "url" : {
+            "type" : "string",
+            "maxLength" : 2048,
+            "minLength" : 1
+          },
+          "eventTypes" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string",
+              "pattern" : "^[a-z0-9]+([._-][a-z0-9]+)*(\\.\\*)?$"
+            },
+            "maxItems" : 50,
+            "minItems" : 0
+          },
+          "enabled" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "Attempts" : {
+        "type" : "object",
+        "properties" : {
+          "succeeded" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "failed" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "successRate" : {
+            "type" : [ "number", "null" ],
+            "format" : "double"
+          },
+          "latencyP50Ms" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "latencyP95Ms" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          }
+        },
+        "required" : [ "failed", "latencyP50Ms", "latencyP95Ms", "succeeded", "successRate" ]
+      },
+      "Current" : {
+        "type" : "object",
+        "properties" : {
+          "pending" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "retrying" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "inFlight" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        },
+        "required" : [ "inFlight", "pending", "retrying" ]
+      },
+      "DeadLettered" : {
+        "type" : "object",
+        "properties" : {
+          "total" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "byReason" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "integer",
+              "format" : "int64"
+            }
+          }
+        },
+        "required" : [ "byReason", "total" ]
+      },
+      "EndpointHealthItem" : {
+        "type" : "object",
+        "properties" : {
+          "endpointId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "circuit" : {
+            "$ref" : "#/components/schemas/CircuitView"
+          },
+          "health" : {
+            "$ref" : "#/components/schemas/EndpointHealth"
+          }
+        },
+        "required" : [ "circuit", "endpointId", "health", "name" ]
+      },
+      "Overview" : {
+        "type" : "object",
+        "properties" : {
+          "window" : {
+            "type" : "string",
+            "enum" : [ "1h", "24h", "7d" ]
+          },
+          "windowStart" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "windowEnd" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "eventsSubmitted" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "deliveriesSucceeded" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "deliveriesDeadLettered" : {
+            "$ref" : "#/components/schemas/DeadLettered"
+          },
+          "current" : {
+            "$ref" : "#/components/schemas/Current"
+          },
+          "deliverySuccessRate" : {
+            "type" : [ "number", "null" ],
+            "format" : "double"
+          },
+          "attempts" : {
+            "$ref" : "#/components/schemas/Attempts"
+          },
+          "recentActivity" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RecentAttempt"
+            }
+          },
+          "endpointHealth" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EndpointHealthItem"
+            }
+          }
+        },
+        "required" : [ "attempts", "current", "deliveriesDeadLettered", "deliveriesSucceeded", "deliverySuccessRate", "endpointHealth", "eventsSubmitted", "recentActivity", "window", "windowEnd", "windowStart" ]
+      },
+      "RecentAttempt" : {
+        "type" : "object",
+        "properties" : {
+          "attemptId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "deliveryId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "endpointId" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "endpointName" : {
+            "type" : "string"
+          },
+          "eventType" : {
+            "type" : "string"
+          },
+          "attemptNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "STARTED", "SUCCEEDED", "FAILED", "ABANDONED" ]
+          },
+          "outcome" : {
+            "type" : [ "string", "null" ]
+          },
+          "responseStatus" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "durationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "attemptId", "attemptNumber", "deliveryId", "durationMs", "endpointId", "endpointName", "eventType", "outcome", "responseStatus", "startedAt", "status" ]
+      },
+      "EventSummary" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "eventType" : {
+            "type" : "string"
+          },
+          "idempotencyKey" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "deliveryCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "deliveredCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "deadLetteredCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "activeCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "activeCount", "createdAt", "deadLetteredCount", "deliveredCount", "deliveryCount", "eventType", "id", "idempotencyKey" ]
+      },
+      "PageEventSummary" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EventSummary"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "EventDetail" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "eventType" : {
+            "type" : "string"
+          },
+          "idempotencyKey" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "occurredAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "body" : { },
+          "deliveries" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DeliverySummary"
+            }
+          }
+        },
+        "required" : [ "body", "createdAt", "deliveries", "eventType", "id", "idempotencyKey", "occurredAt" ]
+      },
+      "EndpointListResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EndpointResponse"
+            }
+          }
+        },
+        "required" : [ "items" ]
+      },
+      "PageDeliverySummary" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DeliverySummary"
+            }
+          },
+          "nextCursor" : {
+            "type" : [ "string", "null" ]
+          }
+        },
+        "required" : [ "items", "nextCursor" ]
+      },
+      "AttemptView" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "attemptNumber" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "STARTED", "SUCCEEDED", "FAILED", "ABANDONED" ]
+          },
+          "outcome" : {
+            "type" : [ "string", "null" ]
+          },
+          "retryable" : {
+            "type" : [ "boolean", "null" ]
+          },
+          "requestUrl" : {
+            "type" : "string"
+          },
+          "responseStatus" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "responseHeaders" : {
+            "type" : "object",
+            "additionalProperties" : {
+              "type" : "string"
+            }
+          },
+          "responseBodyExcerpt" : {
+            "type" : [ "string", "null" ]
+          },
+          "errorMessage" : {
+            "type" : [ "string", "null" ]
+          },
+          "retryAfterSeconds" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "startedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "finishedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "durationMs" : {
+            "type" : [ "integer", "null" ],
+            "format" : "int32"
+          },
+          "reportedAfterLeaseExpiry" : {
+            "type" : "boolean"
+          }
+        },
+        "required" : [ "attemptNumber", "durationMs", "errorMessage", "finishedAt", "id", "outcome", "reportedAfterLeaseExpiry", "requestUrl", "responseBodyExcerpt", "responseHeaders", "responseStatus", "retryAfterSeconds", "retryable", "startedAt", "status" ]
+      },
+      "DeliveryDetail" : {
+        "type" : "object",
+        "properties" : {
+          "delivery" : {
+            "$ref" : "#/components/schemas/DeliverySummary"
+          },
+          "endpointUrl" : {
+            "type" : "string"
+          },
+          "lease" : {
+            "anyOf" : [ {
+              "$ref" : "#/components/schemas/Lease"
+            }, {
+              "type" : "null"
+            } ]
+          },
+          "eventBody" : { },
+          "attempts" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/AttemptView"
+            }
+          },
+          "replayEligibility" : {
+            "$ref" : "#/components/schemas/ReplayEligibility"
+          },
+          "chain" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/DeliverySummary"
+            }
+          }
+        },
+        "required" : [ "attempts", "chain", "delivery", "endpointUrl", "eventBody", "lease", "replayEligibility" ]
+      },
+      "Lease" : {
+        "type" : "object",
+        "properties" : {
+          "owner" : {
+            "type" : "string"
+          },
+          "expiresAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "expiresAt", "owner" ]
+      },
+      "ReplayEligibility" : {
+        "type" : "object",
+        "properties" : {
+          "eligible" : {
+            "type" : "boolean"
+          },
+          "reason" : {
+            "type" : [ "string", "null" ],
+            "enum" : [ "NOT_DEAD_LETTERED", "ENDPOINT_DELETED", "ENDPOINT_DISABLED", "REPLAY_IN_PROGRESS", "REPLAY_LIMIT_REACHED", null ]
+          },
+          "replayCount" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "maxReplays" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        },
+        "required" : [ "eligible", "maxReplays", "reason", "replayCount" ]
+      },
+      "CsrfToken" : {
+        "type" : "object",
+        "properties" : {
+          "parameterName" : {
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          },
+          "headerName" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "headerName", "parameterName", "token" ]
+      },
+      "CsrfResponse" : {
+        "type" : "object",
+        "properties" : {
+          "headerName" : {
+            "type" : "string"
+          },
+          "token" : {
+            "type" : "string"
+          }
+        },
+        "required" : [ "headerName", "token" ]
+      },
+      "ApiKey" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string",
+            "format" : "uuid"
+          },
+          "name" : {
+            "type" : "string"
+          },
+          "prefix" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "lastUsedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          },
+          "revokedAt" : {
+            "type" : [ "string", "null" ],
+            "format" : "date-time"
+          }
+        },
+        "required" : [ "createdAt", "id", "lastUsedAt", "name", "prefix", "revokedAt" ]
+      },
+      "ApiKeyListResponse" : {
+        "type" : "object",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/ApiKey"
+            }
+          }
+        },
+        "required" : [ "items" ]
+      }
+    }
+  }
+}

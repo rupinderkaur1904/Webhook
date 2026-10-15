@@ -32,6 +32,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # schema.ts must be generated from the committed contract (the backend's OpenApiContractTest
+      # keeps openapi.json in step with the API).
+      - name: Generated API types are up to date
+        run: npm run gen:api && git diff --exit-code src/api/schema.ts
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
