@@ -6,6 +6,7 @@ import java.lang.annotation.Annotation;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.TreeMap;
 import org.springdoc.core.customizers.OpenApiCustomizer;
 import org.springdoc.core.customizers.PropertyCustomizer;
 import org.springdoc.core.utils.SpringDocUtils;
@@ -91,6 +92,9 @@ public class OpenApiConfig {
                 if (schema.getProperties() == null || schema.getProperties().isEmpty()) {
                     return;
                 }
+                // Getter-based types (e.g. Spring's CsrfToken) list properties in reflection order, which
+                // varies between runs; sorting keeps the committed contract stable.
+                schema.setProperties(new TreeMap<>(schema.getProperties()));
                 if (!name.endsWith("Request")) {
                     schema.setRequired(new ArrayList<>(schema.getProperties().keySet()));
                 }

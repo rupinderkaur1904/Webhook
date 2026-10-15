@@ -1,0 +1,9 @@
+# Keep Unix line endings for everything that runs inside Linux containers or bash, even on a Windows
+# checkout with core.autocrlf=true: a CRLF in mvnw or a .sh file breaks the Docker build.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.ico binary
+*.jar binary

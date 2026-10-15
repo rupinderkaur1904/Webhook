@@ -313,140 +313,140 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         CreateEventRequest: {
-            eventType: string;
-            payload: unknown;
             endpointIds?: string[];
+            eventType: string;
             /** Format: date-time */
             occurredAt?: string;
+            payload: unknown;
         };
         AcceptedDelivery: {
             /** Format: uuid */
-            id: string;
-            /** Format: uuid */
             endpointId: string;
+            /** Format: uuid */
+            id: string;
             /** @enum {string} */
             status: "PENDING" | "RETRYING" | "IN_FLIGHT" | "DELIVERED" | "DEAD_LETTERED" | "CANCELLED";
         };
         EventAcceptedResponse: {
-            /** Format: uuid */
-            id: string;
-            eventType: string;
-            idempotencyKey: string;
             /** Format: date-time */
             createdAt: string;
             deliveries: components["schemas"]["AcceptedDelivery"][];
+            eventType: string;
+            /** Format: uuid */
+            id: string;
+            idempotencyKey: string;
         };
         CreateEndpointRequest: {
-            name: string;
             description?: string;
-            url: string;
             eventTypes?: string[];
+            name: string;
+            url: string;
         };
         CircuitView: {
-            /** @enum {string} */
-            state: "CLOSED" | "OPEN" | "HALF_OPEN";
             /** Format: int32 */
             consecutiveFailures: number;
             /** Format: date-time */
             openedAt: string | null;
             /** Format: date-time */
             retryAt: string | null;
+            /** @enum {string} */
+            state: "CLOSED" | "OPEN" | "HALF_OPEN";
         };
         EndpointCreatedResponse: {
             endpoint: components["schemas"]["EndpointResponse"];
             secret: string;
         };
         EndpointHealth: {
-            /** @enum {string} */
-            status: "DISABLED" | "FAILING" | "DEGRADED" | "HEALTHY" | "NO_DATA";
-            /** @enum {string} */
-            window: "1h" | "24h" | "7d";
             /** Format: int64 */
             attempts: number;
             /** Format: int64 */
+            deadLetters: number;
+            /** Format: int64 */
             failedAttempts: number;
-            /** Format: double */
-            successRate: number | null;
+            lastFailure: components["schemas"]["LastFailure"] | null;
+            /** Format: date-time */
+            lastSuccessAt: string | null;
             /** Format: int32 */
             latencyP50Ms: number | null;
             /** Format: int32 */
             latencyP95Ms: number | null;
-            /** Format: int64 */
-            deadLetters: number;
-            /** Format: date-time */
-            lastSuccessAt: string | null;
-            lastFailure: components["schemas"]["LastFailure"] | null;
+            /** @enum {string} */
+            status: "DISABLED" | "FAILING" | "DEGRADED" | "HEALTHY" | "NO_DATA";
+            /** Format: double */
+            successRate: number | null;
+            /** @enum {string} */
+            window: "1h" | "24h" | "7d";
         };
         EndpointResponse: {
+            circuit: components["schemas"]["CircuitView"];
+            /** Format: date-time */
+            createdAt: string;
+            description: string | null;
+            enabled: boolean;
+            eventTypes: string[];
+            health: components["schemas"]["EndpointHealth"];
             /** Format: uuid */
             id: string;
             name: string;
-            description: string | null;
-            url: string;
-            eventTypes: string[];
-            enabled: boolean;
-            secretPrefix: string;
             /** Format: date-time */
             previousSecretExpiresAt: string | null;
-            circuit: components["schemas"]["CircuitView"];
-            health: components["schemas"]["EndpointHealth"];
-            /** Format: date-time */
-            createdAt: string;
+            secretPrefix: string;
             /** Format: date-time */
             updatedAt: string;
+            url: string;
         };
         LastFailure: {
             /** Format: date-time */
             at: string;
+            error: string | null;
             outcome: string | null;
             /** Format: int32 */
             responseStatus: number | null;
-            error: string | null;
         };
         RotateSecretRequest: {
             /** Format: int32 */
             gracePeriodHours?: number;
         };
         RotateSecretResponse: {
-            secret: string;
-            secretPrefix: string;
             /** Format: date-time */
             previousSecretExpiresAt: string | null;
+            secret: string;
+            secretPrefix: string;
         };
         DeliverySummary: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            eventId: string;
-            /** Format: uuid */
-            endpointId: string;
-            endpointName: string;
-            eventType: string;
-            /** @enum {string} */
-            status: "PENDING" | "RETRYING" | "IN_FLIGHT" | "DELIVERED" | "DEAD_LETTERED" | "CANCELLED";
             /** Format: int32 */
             attemptCount: number;
-            /** Format: int32 */
-            maxAttempts: number;
-            /** Format: int32 */
-            lastResponseStatus: number | null;
-            lastError: string | null;
             /** Format: date-time */
-            lastAttemptAt: string | null;
-            /** Format: date-time */
-            nextAttemptAt: string | null;
+            createdAt: string;
             /** @enum {string|null} */
             deadLetterReason: "RETRIES_EXHAUSTED" | "NON_RETRYABLE_RESPONSE" | "DESTINATION_BLOCKED" | null;
             /** Format: date-time */
-            deliveredAt: string | null;
-            /** Format: date-time */
             deadLetteredAt: string | null;
+            /** Format: date-time */
+            deliveredAt: string | null;
+            /** Format: uuid */
+            endpointId: string;
+            endpointName: string;
+            /** Format: uuid */
+            eventId: string;
+            eventType: string;
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            lastAttemptAt: string | null;
+            lastError: string | null;
+            /** Format: int32 */
+            lastResponseStatus: number | null;
+            /** Format: int32 */
+            maxAttempts: number;
+            /** Format: date-time */
+            nextAttemptAt: string | null;
             /** Format: uuid */
             replayOfDeliveryId: string | null;
             /** Format: uuid */
             rootDeliveryId: string;
-            /** Format: date-time */
-            createdAt: string;
+            /** @enum {string} */
+            status: "PENDING" | "RETRYING" | "IN_FLIGHT" | "DELIVERED" | "DEAD_LETTERED" | "CANCELLED";
         };
         RegisterRequest: {
             /** Format: email */
@@ -454,9 +454,9 @@ export interface components {
             password: string;
         };
         UserResponse: {
+            email: string;
             /** Format: uuid */
             id: string;
-            email: string;
         };
         LoginRequest: {
             email: string;
@@ -468,122 +468,122 @@ export interface components {
         ApiKeyCreatedResponse: {
             /** Format: uuid */
             id: string;
-            name: string;
             key: string;
+            name: string;
             prefix: string;
         };
         UpdateEndpointRequest: {
-            name?: string;
             description?: string;
-            url?: string;
-            eventTypes?: string[];
             enabled?: boolean;
+            eventTypes?: string[];
+            name?: string;
+            url?: string;
         };
         Attempts: {
             /** Format: int64 */
-            succeeded: number;
-            /** Format: int64 */
             failed: number;
-            /** Format: double */
-            successRate: number | null;
             /** Format: int32 */
             latencyP50Ms: number | null;
             /** Format: int32 */
             latencyP95Ms: number | null;
+            /** Format: int64 */
+            succeeded: number;
+            /** Format: double */
+            successRate: number | null;
         };
         Current: {
+            /** Format: int64 */
+            inFlight: number;
             /** Format: int64 */
             pending: number;
             /** Format: int64 */
             retrying: number;
-            /** Format: int64 */
-            inFlight: number;
         };
         DeadLettered: {
-            /** Format: int64 */
-            total: number;
             byReason: {
                 [key: string]: number;
             };
+            /** Format: int64 */
+            total: number;
         };
         EndpointHealthItem: {
+            circuit: components["schemas"]["CircuitView"];
             /** Format: uuid */
             endpointId: string;
-            name: string;
-            circuit: components["schemas"]["CircuitView"];
             health: components["schemas"]["EndpointHealth"];
+            name: string;
         };
         Overview: {
+            attempts: components["schemas"]["Attempts"];
+            current: components["schemas"]["Current"];
+            deliveriesDeadLettered: components["schemas"]["DeadLettered"];
+            /** Format: int64 */
+            deliveriesSucceeded: number;
+            /** Format: double */
+            deliverySuccessRate: number | null;
+            endpointHealth: components["schemas"]["EndpointHealthItem"][];
+            /** Format: int64 */
+            eventsSubmitted: number;
+            recentActivity: components["schemas"]["RecentAttempt"][];
             /** @enum {string} */
             window: "1h" | "24h" | "7d";
             /** Format: date-time */
-            windowStart: string;
-            /** Format: date-time */
             windowEnd: string;
-            /** Format: int64 */
-            eventsSubmitted: number;
-            /** Format: int64 */
-            deliveriesSucceeded: number;
-            deliveriesDeadLettered: components["schemas"]["DeadLettered"];
-            current: components["schemas"]["Current"];
-            /** Format: double */
-            deliverySuccessRate: number | null;
-            attempts: components["schemas"]["Attempts"];
-            recentActivity: components["schemas"]["RecentAttempt"][];
-            endpointHealth: components["schemas"]["EndpointHealthItem"][];
+            /** Format: date-time */
+            windowStart: string;
         };
         RecentAttempt: {
             /** Format: uuid */
             attemptId: string;
+            /** Format: int32 */
+            attemptNumber: number;
             /** Format: uuid */
             deliveryId: string;
+            /** Format: int32 */
+            durationMs: number | null;
             /** Format: uuid */
             endpointId: string;
             endpointName: string;
             eventType: string;
-            /** Format: int32 */
-            attemptNumber: number;
-            /** @enum {string} */
-            status: "STARTED" | "SUCCEEDED" | "FAILED" | "ABANDONED";
             outcome: string | null;
             /** Format: int32 */
             responseStatus: number | null;
-            /** Format: int32 */
-            durationMs: number | null;
             /** Format: date-time */
             startedAt: string;
+            /** @enum {string} */
+            status: "STARTED" | "SUCCEEDED" | "FAILED" | "ABANDONED";
         };
         EventSummary: {
-            /** Format: uuid */
-            id: string;
-            eventType: string;
-            idempotencyKey: string;
+            /** Format: int32 */
+            activeCount: number;
             /** Format: date-time */
             createdAt: string;
             /** Format: int32 */
-            deliveryCount: number;
+            deadLetteredCount: number;
             /** Format: int32 */
             deliveredCount: number;
             /** Format: int32 */
-            deadLetteredCount: number;
-            /** Format: int32 */
-            activeCount: number;
+            deliveryCount: number;
+            eventType: string;
+            /** Format: uuid */
+            id: string;
+            idempotencyKey: string;
         };
         PageEventSummary: {
             items: components["schemas"]["EventSummary"][];
             nextCursor: string | null;
         };
         EventDetail: {
-            /** Format: uuid */
-            id: string;
-            eventType: string;
-            idempotencyKey: string;
+            body: unknown;
             /** Format: date-time */
             createdAt: string;
+            deliveries: components["schemas"]["DeliverySummary"][];
+            eventType: string;
+            /** Format: uuid */
+            id: string;
+            idempotencyKey: string;
             /** Format: date-time */
             occurredAt: string | null;
-            body: unknown;
-            deliveries: components["schemas"]["DeliverySummary"][];
         };
         EndpointListResponse: {
             items: components["schemas"]["EndpointResponse"][];
@@ -593,73 +593,73 @@ export interface components {
             nextCursor: string | null;
         };
         AttemptView: {
-            /** Format: uuid */
-            id: string;
             /** Format: int32 */
             attemptNumber: number;
-            /** @enum {string} */
-            status: "STARTED" | "SUCCEEDED" | "FAILED" | "ABANDONED";
-            outcome: string | null;
-            retryable: boolean | null;
-            requestUrl: string;
             /** Format: int32 */
-            responseStatus: number | null;
+            durationMs: number | null;
+            errorMessage: string | null;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** Format: uuid */
+            id: string;
+            outcome: string | null;
+            reportedAfterLeaseExpiry: boolean;
+            requestUrl: string;
+            responseBodyExcerpt: string | null;
             responseHeaders: {
                 [key: string]: string;
             };
-            responseBodyExcerpt: string | null;
-            errorMessage: string | null;
+            /** Format: int32 */
+            responseStatus: number | null;
             /** Format: int32 */
             retryAfterSeconds: number | null;
+            retryable: boolean | null;
             /** Format: date-time */
             startedAt: string;
-            /** Format: date-time */
-            finishedAt: string | null;
-            /** Format: int32 */
-            durationMs: number | null;
-            reportedAfterLeaseExpiry: boolean;
+            /** @enum {string} */
+            status: "STARTED" | "SUCCEEDED" | "FAILED" | "ABANDONED";
         };
         DeliveryDetail: {
+            attempts: components["schemas"]["AttemptView"][];
+            chain: components["schemas"]["DeliverySummary"][];
             delivery: components["schemas"]["DeliverySummary"];
             endpointUrl: string;
-            lease: components["schemas"]["Lease"] | null;
             eventBody: unknown;
-            attempts: components["schemas"]["AttemptView"][];
+            lease: components["schemas"]["Lease"] | null;
             replayEligibility: components["schemas"]["ReplayEligibility"];
-            chain: components["schemas"]["DeliverySummary"][];
         };
         Lease: {
-            owner: string;
             /** Format: date-time */
             expiresAt: string;
+            owner: string;
         };
         ReplayEligibility: {
             eligible: boolean;
+            /** Format: int32 */
+            maxReplays: number;
             /** @enum {string|null} */
             reason: "NOT_DEAD_LETTERED" | "ENDPOINT_DELETED" | "ENDPOINT_DISABLED" | "REPLAY_IN_PROGRESS" | "REPLAY_LIMIT_REACHED" | null;
             /** Format: int32 */
             replayCount: number;
-            /** Format: int32 */
-            maxReplays: number;
         };
         CsrfToken: {
+            headerName: string;
             parameterName: string;
             token: string;
-            headerName: string;
         };
         CsrfResponse: {
             headerName: string;
             token: string;
         };
         ApiKey: {
-            /** Format: uuid */
-            id: string;
-            name: string;
-            prefix: string;
             /** Format: date-time */
             createdAt: string;
+            /** Format: uuid */
+            id: string;
             /** Format: date-time */
             lastUsedAt: string | null;
+            name: string;
+            prefix: string;
             /** Format: date-time */
             revokedAt: string | null;
         };
