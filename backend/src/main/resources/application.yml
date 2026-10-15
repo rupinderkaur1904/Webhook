@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: webhook-platform
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/webhooks}
+    username: ${DATABASE_USERNAME:webhooks}
+    password: ${DATABASE_PASSWORD:webhooks}
+    hikari:
+      # Worker concurrency never holds a connection during HTTP calls, so a modest pool suffices.
+      maximum-pool-size: ${DATABASE_POOL_SIZE:20}
+  flyway:
+    locations: classpath:db/migration
+  autoconfigure:
+    exclude:
+      # Authentication is API-key based; no in-memory user with a generated password.
+      - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
+  jackson:
+    default-property-inclusion: always
+  mvc:
+    problemdetails:
+      enabled: true
+
+server:
+  port: ${PORT:8080}
+  shutdown: graceful
+  error:
+    include-stacktrace: never
+    include-message: never
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+webhooks:
+  bootstrap:
+    email: ${BOOTSTRAP_EMAIL:}
+    password: ${BOOTSTRAP_PASSWORD:}
+    api-key: ${BOOTSTRAP_API_KEY:}
+  secrets:
+    encryption-key: ${SECRET_ENCRYPTION_KEY:}
+  ssrf:
+    allowed-hosts: ${SSRF_ALLOWED_HOSTS:}

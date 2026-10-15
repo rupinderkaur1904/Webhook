@@ -1,0 +1,16 @@
+webhooks:
+  secrets:
+    encryption-key: dGVzdC1vbmx5LWVuY3J5cHRpb24ta2V5LTMyYnl0ZXM=
+  worker:
+    enabled: false
+    poll-interval: 50ms
+  delivery:
+    connect-timeout: 1s
+    response-timeout: 2s
+  ssrf:
+    # Host-only entry: the in-process test receiver listens on a random port.
+    allowed-hosts:
+      - 127.0.0.1
+logging:
+  level:
+    dev.webhooks: INFO

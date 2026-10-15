@@ -1,0 +1,19 @@
+# Local PostgreSQL for development. The backend and simulator run from the command line
+# (see README); a full containerized stack is added in the deployment stage.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: webhooks
+      POSTGRES_USER: webhooks
+      POSTGRES_PASSWORD: webhooks
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U webhooks -d webhooks"]
+      interval: 5s
+      retries: 10
+volumes:
+  pgdata:

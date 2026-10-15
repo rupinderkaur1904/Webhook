@@ -1,0 +1,14 @@
+# Local development profile (SPRING_PROFILES_ACTIVE=local). Never use these values in production.
+webhooks:
+  bootstrap:
+    email: dev@localhost
+    password: local-dev-password
+    api-key: whk_local_dev_key_0000000000000000000000
+  secrets:
+    # Well-known 32-byte key for local use only; production must set SECRET_ENCRYPTION_KEY.
+    encryption-key: bG9jYWwtZGV2LW9ubHktZW5jcnlwdGlvbi1rZXktISE=
+  ssrf:
+    allowed-hosts:
+      - localhost:9090
+      - 127.0.0.1:9090
+      - simulator:9090
