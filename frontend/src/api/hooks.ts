@@ -8,6 +8,7 @@ import type {
   DeliverySummary,
   Endpoint,
   EndpointCreated,
+  EndpointHealth,
   EventAccepted,
   EventDetail,
   EventSummary,
@@ -25,6 +26,7 @@ export function useEndpoints() {
   return useQuery({
     queryKey: ['endpoints'],
     queryFn: () => api<{ items: Endpoint[] }>('/api/v1/endpoints').then((r) => r.items),
+    refetchInterval: LIVE_REFRESH_MS,
   });
 }
 
@@ -32,6 +34,27 @@ export function useEndpoint(id: string) {
   return useQuery({
     queryKey: ['endpoints', id],
     queryFn: () => api<Endpoint>(`/api/v1/endpoints/${id}`),
+    refetchInterval: LIVE_REFRESH_MS,
+  });
+}
+
+export function useEndpointHealth(id: string, window: MetricsWindow) {
+  return useQuery({
+    queryKey: ['endpoints', id, 'health', window],
+    queryFn: () => api<EndpointHealth>(`/api/v1/endpoints/${id}/health?window=${window}`),
+    refetchInterval: LIVE_REFRESH_MS,
+  });
+}
+
+/** Closes an open circuit by hand: queued deliveries resume on the next poll. */
+export function useResetCircuit() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<Endpoint>(`/api/v1/endpoints/${id}/circuit/reset`, { method: 'POST' }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['endpoints'] });
+      client.invalidateQueries({ queryKey: ['overview'] });
+    },
   });
 }
 

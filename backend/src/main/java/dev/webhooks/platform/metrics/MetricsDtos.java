@@ -1,5 +1,7 @@
 package dev.webhooks.platform.metrics;
 
+import dev.webhooks.platform.circuit.CircuitView;
+import dev.webhooks.platform.health.EndpointHealth;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +26,17 @@ public final class MetricsDtos {
             Current current,
             Double deliverySuccessRate,
             Attempts attempts,
-            List<RecentAttempt> recentActivity) {}
+            List<RecentAttempt> recentActivity,
+            List<EndpointHealthItem> endpointHealth) {
+
+        public Overview withEndpointHealth(List<EndpointHealthItem> items) {
+            return new Overview(window, windowStart, windowEnd, eventsSubmitted, deliveriesSucceeded,
+                    deliveriesDeadLettered, current, deliverySuccessRate, attempts, recentActivity, items);
+        }
+    }
+
+    /** One endpoint's health over the overview window, worst first (FAILING, DEGRADED, ...). */
+    public record EndpointHealthItem(UUID endpointId, String name, CircuitView circuit, EndpointHealth health) {}
 
     /** Deliveries dead-lettered in the window, total and per reason. */
     public record DeadLettered(long total, Map<String, Long> byReason) {}

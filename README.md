@@ -13,7 +13,7 @@ The full design is in [docs/PLAN.md](docs/PLAN.md). This README describes what i
 | 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | **Done** |
 | 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | **Done** |
 | 5. Security hardening | Login sessions, API-key management, full SSRF test matrix, rate limits, request limits | **Done** |
-| 6. Reliability and observability | Circuit breaker, endpoint health, metrics, structured logging | Next |
+| 6. Reliability and observability | Circuit breaker, endpoint health, metrics, structured logging | **Done** |
 | 7. Final verification | E2E suite, deployment, complete documentation | Planned |
 
 Deployment packaging (containers, TLS, reverse proxy) arrives in Stage 7; see [Known limitations](#known-limitations-current-stage) before exposing an instance.
@@ -132,6 +132,28 @@ A replay is refused with `409 REPLAY_NOT_ELIGIBLE` and one of these `reason` val
 
 Two simultaneous replay clicks cannot both succeed. A partial unique index allows only one unfinished delivery per chain, and the request that loses gets `REPLAY_IN_PROGRESS`. The replay also takes a share lock on the endpoint row, so deleting the endpoint at the same moment either rejects the replay or cancels it. `GET /deliveries/{id}` reports `replayEligibility` and the full `chain`.
 
+### Circuit breaker and endpoint health
+
+Each endpoint has a circuit breaker, so a receiver that is down does not use up worker capacity or the retry budget of everything queued for it.
+
+- **Closed:** deliveries flow. A failure is a retryable outcome other than `429` (5xx, timeout, connection, DNS or TLS error, 408/425). Ten consecutive failures open the circuit (`CIRCUIT_FAILURE_THRESHOLD`). A 2xx, or a non-retryable answer such as `400` (the endpoint is reachable; the payload is the problem), ends the streak. `429` and blocked destinations change nothing.
+- **Open:** workers do not claim the endpoint's deliveries. They stay `PENDING` or `RETRYING` with **no attempt recorded and no retry budget used**, and are picked up once the circuit closes. The cool-down is 30s, doubling each time the circuit reopens, capped at 30 minutes (`CIRCUIT_BASE_COOLDOWN`, `CIRCUIT_MAX_COOLDOWN`).
+- **Half-open:** after the cool-down the maintenance loop picks exactly one probe, the endpoint's earliest due delivery. If it succeeds (or gets a non-retryable answer) the circuit closes and the backlog drains. If it fails, the circuit reopens with a longer cool-down. If the probe ends without deciding (for example it was cancelled, or dead-lettered after repeated `429`s), another probe is picked, so a circuit never stays stuck.
+- **Manual reset:** the endpoint page has **Close circuit now** (`POST /endpoints/{id}/circuit/reset`, session only).
+- The circuit's counters are updated in the same transaction that records the attempt, so they always agree with the attempt history. A worker's late result after its lease expired is discarded and does not count.
+
+**Health** is shown on the endpoint list, the endpoint page and the overview. Rules are evaluated in order:
+
+| Health | Rule |
+|---|---|
+| `DISABLED` | The endpoint is disabled. |
+| `FAILING` | The circuit is open or half-open, or the last 5 attempts all failed. |
+| `DEGRADED` | Attempt success rate under 90% with at least 10 attempts in the window, or any dead letter in the window. |
+| `HEALTHY` | At least one attempt in the window and none of the above. |
+| `NO_DATA` | No attempts in the window. |
+
+Health also reports attempts, failed attempts, success rate, p50/p95 latency and dead letters for the window, plus the last success and the last failure (outcome, HTTP status, error) at any time.
+
 ### Delivery semantics
 
 Delivery is **at-least-once**, not exactly-once. A receiver can see the same `webhook-id` more than once. That happens when it processes a request but the response is lost, when a timeout fires after processing, or later when a delivery is replayed or a worker lease expires. The platform guarantees that an accepted event is durably stored and attempted. Preventing duplicate side effects is the receiver's job, by deduplicating on `webhook-id`.
@@ -158,9 +180,11 @@ There are two ways to authenticate:
 |---|---|---|
 | `POST` | `/endpoints` | Register an endpoint. Returns the signing secret **once** (`201`). At most 50 endpoints per account (`422 ENDPOINT_LIMIT_REACHED`). |
 | `POST` | `/endpoints/{id}/rotate-secret` | `{gracePeriodHours: 0..72}` (default 24). Returns the new secret **once**, with `previousSecretExpiresAt`. Until then every delivery carries two signatures, new and old. |
-| `GET` | `/endpoints` | List endpoints. |
+| `GET` | `/endpoints` | List endpoints, each with its `circuit` and 24h `health`. |
 | `GET` / `PATCH` / `DELETE` | `/endpoints/{id}` | Read, update (`name`, `description`, `url`, `eventTypes`, `enabled`), or soft-delete. Deleting cancels queued deliveries. |
 | `POST` | `/endpoints/{id}/test` | Queue a real `webhook.test` event to this endpoint. |
+| `GET` | `/endpoints/{id}/health?window=1h\|24h\|7d` | Endpoint health over the window (default 24h). See [Circuit breaker and endpoint health](#circuit-breaker-and-endpoint-health). |
+| `POST` | `/endpoints/{id}/circuit/reset` | Close the endpoint's circuit by hand; queued deliveries resume on the next poll. |
 | `POST` | `/events` | Submit an event. `Idempotency-Key` header required. Body at most 256 KB (`413`). 50 per second per credential, bursts of 100 (`429` with `Retry-After`). |
 | `GET` | `/events`, `/events/{id}` | List events, with per-status delivery counts. Filter by `eventType`, `from`, `to`; cursor-paginated. Or get one event with its deliveries. |
 | `GET` | `/deliveries` | Filter by `status` (repeatable), `endpointId`, `eventId`, `eventType`, `deadLetterReason`, `from` (inclusive), `to` (exclusive). Cursor-paginated. The dead-letter view is `status=DEAD_LETTERED`. |
@@ -181,8 +205,7 @@ Endpoint management, replay and rotation need a session; the `GET` routes and `P
 | `current` | Pending, retrying and in-flight counts right now. These are not windowed. |
 | `attempts` | Attempts started in the window that have finished: the succeeded count, the failed count (abandoned attempts count as failed), the success rate, and p50/p95 latency. |
 | `recentActivity` | The 20 most recent attempts, including ones still in flight. |
-
-Endpoint health and the circuit breaker are added to the overview in Stage 6.
+| `endpointHealth` | Every endpoint with its circuit and health over the same window, worst first (failing, degraded, healthy, no data, disabled). |
 
 The OpenAPI document is at `/v3/api-docs` and Swagger UI is at `/swagger-ui.html`.
 
@@ -230,7 +253,11 @@ Idempotency-Key: order-123
 
 **Browser hardening and logging**
 - Responses carry a strict `Content-Security-Policy` (`default-src 'self'`, no inline scripts, `frame-ancestors 'none'`), `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin`. `vite preview` serves the built dashboard with the same headers.
-- Log lines carry the request id. No code path logs a secret or key; as a backstop, anything shaped like `whsec_…` or `whk_…` is masked in log output.
+- Log lines carry the request id. No code path logs a secret or key; as a backstop, anything shaped like `whsec_…` or `whk_…` is masked in log output, in both the plain-text and the JSON format.
+
+**Operational endpoints**
+- `/actuator/health` is public (liveness and readiness, no details).
+- `/actuator/prometheus` needs `Authorization: Bearer $METRICS_TOKEN` (at least 24 characters, compared in constant time). Without `METRICS_TOKEN` it refuses every request. The token opens nothing else, and no other actuator endpoint is exposed.
 
 **Outbound limits:** 5 s connect timeout, plus a hard 15 s deadline for the whole response. Only the first 2 KB of the response body is read and stored, after stripping control characters. Only the `content-type`, `content-length`, `retry-after` and `date` response headers are stored.
 
@@ -258,6 +285,8 @@ Production configuration uses these environment variables:
 - `BOOTSTRAP_EMAIL`, `BOOTSTRAP_PASSWORD`, `BOOTSTRAP_API_KEY`
 - `REGISTRATION_ENABLED` (default `false`), `SESSION_TIMEOUT` (default `8h`)
 - `SESSION_COOKIE_SECURE` (default `true`; set `false` only for plain-HTTP local development)
+- `METRICS_TOKEN` (enables `/actuator/prometheus` for a scraper holding it), `LOG_FORMAT` (empty for plain text, `ecs` or `logstash` for JSON)
+- `CIRCUIT_FAILURE_THRESHOLD` (default `10`), `CIRCUIT_BASE_COOLDOWN` (`30s`), `CIRCUIT_MAX_COOLDOWN` (`30m`)
 
 The app refuses to start without a valid encryption key.
 
@@ -277,6 +306,8 @@ scripts/demo.sh replay        # exhaust, fix the receiver, replay -> DELIVERED; 
 scripts/demo.sh idempotency   # same key twice -> 200 replay; same key, different payload -> 409
 scripts/demo.sh signature     # verify a delivered request: VALID; tampered body or wrong secret: INVALID_SIGNATURE
 scripts/demo.sh crash         # kill -9 the backend mid-request, restart it -> attempt 1 ABANDONED / LEASE_EXPIRED, attempt 2 DELIVERED
+scripts/demo.sh breaker       # always 500: circuit opens after 10 failures, 10 more events wait without using retries;
+                              # fix the receiver -> one probe closes the circuit and all 20 are DELIVERED
 scripts/demo.sh rotation      # rotate with 24h grace -> two signatures; the old and the new secret both verify
 scripts/demo.sh security      # 401 anonymous, 403 API key on management, 403 without CSRF, 413 oversized, 429 after bad logins
 ```
@@ -286,6 +317,8 @@ The script signs in as the bootstrap account for management calls (cookie jar pl
 `crash` kills whatever is listening on the API port and restarts the jar, using the local profile's 15s lease and 2s reaper interval. Set `CRASH_CMD` and `START_CMD` to use something else, for example `docker compose kill app` and `docker compose start app`.
 
 The simulator's request log marks repeated `webhook-id`s as duplicates. This shows why receivers must deduplicate.
+
+The `local` profile shortens the circuit cool-down to 5s so `breaker` finishes in seconds, and sets the scrape token `local-dev-metrics-token-00000000`.
 
 ### Failure simulator
 
@@ -309,6 +342,28 @@ Saving a new config restarts both the script and the random sequence. Setting a 
 Other endpoints:
 - `GET /receivers/{name}/requests` returns the request log. Each entry shows the signature result, whether its `webhook-id` was a duplicate, the status returned and the rule that chose it.
 - `POST /verify` checks a signature by hand, for example to show that a tampered body is rejected.
+
+## Observability
+
+**Metrics.** `GET /actuator/prometheus` (bearer `METRICS_TOKEN`) exports JVM, HTTP, Hikari and these application metrics, all tagged `application="webhook-platform"`:
+
+| Metric | Meaning |
+|---|---|
+| `webhooks_events_received_total{result}` | Events accepted, and idempotent replays. |
+| `webhooks_deliveries_created_total` | Deliveries created by fan-out. |
+| `webhooks_attempts_seconds{outcome}` | Attempt count and duration by outcome (`SUCCESS`, `HTTP_SERVER_ERROR`, `TIMEOUT`…). |
+| `webhooks_deliveries_finished_total{status,reason}` | Deliveries that reached `DELIVERED` or `DEAD_LETTERED` (with the reason). |
+| `webhooks_deliveries_retries_scheduled_total` | Retries scheduled. |
+| `webhooks_attempts_stale_results_total` | Results discarded because the worker had lost its lease. |
+| `webhooks_leases_expired_total` | In-flight deliveries recovered by the reaper. |
+| `webhooks_circuit_transitions_total{from,to}` | Circuit state changes, including manual resets. |
+| `webhooks_queue_deliveries{status}` | Pending, retrying and in-flight deliveries now. |
+| `webhooks_queue_due`, `webhooks_queue_oldest_due_seconds` | The due backlog and how long its oldest item has waited: the main alerting signal for a stuck or undersized worker pool. |
+| `webhooks_circuits{state}` | Endpoints with an open or half-open circuit. |
+
+Queue and circuit gauges come from PostgreSQL, so every instance reports the same numbers; one query serves all of them and is cached for 5s. If the database is unreachable they report `NaN` rather than failing the scrape.
+
+**Logs.** Plain text by default, with the request id on every line. `LOG_FORMAT=ecs` (or `logstash`) writes one JSON object per line instead. While a delivery is processed, every line carries `deliveryId`, `eventId`, `endpointId`, `accountId` and `attempt`, so one delivery can be followed across retries and workers. Secret-shaped values are masked in both formats.
 
 ## Testing
 
@@ -356,7 +411,13 @@ Integration tests always run against real PostgreSQL. They cover:
   - secrets and keys absent from all log output, and the log masking backstop;
   - the endpoint cap, a 300 KB body, a chunked body over real HTTP, deeply nested JSON, `requestId` in problem bodies, security headers;
   - rate limits: ingestion `429` with `Retry-After` per key over real HTTP, and the login limit;
-- dashboard pages with Vitest and Testing Library: overview, deliveries, dead letters (including replay), delivery detail (replay chain, disabled replay with its reason, a rejected replay), events, endpoint detail, sign-in (CSRF header, wrong password, session expiry, sign-out), CSRF retry, API keys (shown once, revoke) and secret rotation.
+- circuit breaker and health:
+  - every outcome's signal, every transition and the cool-down cap (unit);
+  - end to end on real PostgreSQL: opening after 10 failures, the backlog waiting with its retry budget intact, exactly one probe, a failed probe reopening for twice as long, a successful probe closing and the backlog draining (23 receiver requests for 12 deliveries, none dead-lettered);
+  - `429` never opening a circuit, a `400` ending a failure streak, a stuck half-open circuit getting a new probe, manual reset (session only, cross-account `404`);
+  - health statistics, the window parameter, `DEGRADED` on a dead letter, and the overview's worst-first list;
+- observability: the Prometheus endpoint refusing no token, a wrong token, an API key and a session, and exporting the application metrics with the right token; delivery context on every log line during an attempt; masking in JSON logs;
+- dashboard pages with Vitest and Testing Library: overview, deliveries, dead letters (including replay), delivery detail (replay chain, disabled replay with its reason, a rejected replay), events, endpoint detail, sign-in (CSRF header, wrong password, session expiry, sign-out), CSRF retry, API keys (shown once, revoke), secret rotation, endpoint health badges, the circuit explanation and manual reset, the health window, and the overview's endpoint health list.
 
 ## Known limitations (current stage)
 
@@ -368,4 +429,5 @@ Integration tests always run against real PostgreSQL. They cover:
 - **The dashboard's HTML gets its security headers from whatever serves it.** The backend sends them on API responses and `vite preview` on the built app; the Stage 7 deployment adds them to the production web server.
 - **No ordering guarantee** between events.
 - **A dead letter stays replayable after a later replay of it succeeded.** Replaying it again sends the event once more. The delivery detail shows the whole chain, so the earlier success is visible before you click.
-- **Endpoint health and the circuit breaker** are not built yet (Stage 6).
+- **An open circuit's queued rows are still scanned.** The claim query skips them but PostgreSQL reads past them; fine at this scale, a scaling risk for very large backlogs.
+- **The circuit opens on a run of consecutive failures,** not on a failure rate. An endpoint failing every other request (like the `intermittent` demo) stays closed and shows as `DEGRADED`.

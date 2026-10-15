@@ -1,5 +1,7 @@
 package dev.webhooks.platform.endpoint;
 
+import dev.webhooks.platform.circuit.CircuitView;
+import dev.webhooks.platform.health.EndpointHealth;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -42,12 +44,15 @@ public final class EndpointDtos {
             boolean enabled,
             String secretPrefix,
             Instant previousSecretExpiresAt,
+            CircuitView circuit,
+            /** Health over the last 24 hours (docs/PLAN.md §7.5). */
+            EndpointHealth health,
             Instant createdAt,
             Instant updatedAt) {
 
-        static EndpointResponse from(Endpoint e) {
+        static EndpointResponse from(Endpoint e, EndpointHealth health) {
             return new EndpointResponse(e.id(), e.name(), e.description(), e.url(), e.eventTypes(), e.enabled(),
-                    e.secretPrefix(), e.previousSecretExpiresAt(), e.createdAt(), e.updatedAt());
+                    e.secretPrefix(), e.previousSecretExpiresAt(), e.circuit(), health, e.createdAt(), e.updatedAt());
         }
     }
 

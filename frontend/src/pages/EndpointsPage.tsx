@@ -5,6 +5,8 @@ import { Link } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import { useCreateEndpoint, useEndpoints, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
 import { EmptyState, QueryState } from '../components/QueryState';
+import { CircuitBadge, HealthBadge } from '../components/StatusBadge';
+import { percent } from '../components/labels';
 
 function CreateEndpointModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const create = useCreateEndpoint();
@@ -85,6 +87,7 @@ export function EndpointsPage() {
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
                 <Table.Th>URL</Table.Th>
+                <Table.Th>Health (24h)</Table.Th>
                 <Table.Th>Event types</Table.Th>
                 <Table.Th>Secret</Table.Th>
                 <Table.Th>Enabled</Table.Th>
@@ -103,6 +106,17 @@ export function EndpointsPage() {
                     <Text size="sm" style={{ wordBreak: 'break-all' }}>
                       {endpoint.url}
                     </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <HealthBadge status={endpoint.health.status} />
+                      {endpoint.circuit.state !== 'CLOSED' && <CircuitBadge state={endpoint.circuit.state} />}
+                    </Group>
+                    {endpoint.health.attempts > 0 && (
+                      <Text size="xs" c="dimmed">
+                        {percent(endpoint.health.successRate)} of {endpoint.health.attempts} attempts
+                      </Text>
+                    )}
                   </Table.Td>
                   <Table.Td>
                     {endpoint.eventTypes.length === 0 ? (

@@ -13,7 +13,7 @@ class RateLimiterTest {
 
     static RateLimiter limiter(boolean enabled, int perSecond, int burst, int loginPerMinute) {
         return new RateLimiter(new WebhookProperties(null, null, null, null, null, null, null, null, null,
-                new WebhookProperties.RateLimit(enabled, perSecond, burst, loginPerMinute)));
+                new WebhookProperties.RateLimit(enabled, perSecond, burst, loginPerMinute), null, null));
     }
 
     @Test

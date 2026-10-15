@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import dev.webhooks.platform.config.WebhookProperties;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,8 +15,11 @@ public class DeliveryRepository {
 
     private final JdbcClient jdbc;
 
-    public DeliveryRepository(JdbcClient jdbc) {
+    private final boolean circuitEnabled;
+
+    public DeliveryRepository(JdbcClient jdbc, WebhookProperties properties) {
         this.jdbc = jdbc;
+        this.circuitEnabled = properties.circuit().enabled();
     }
 
     public void insertPending(UUID id, UUID accountId, UUID eventId, UUID endpointId, int maxAttempts) {
@@ -54,6 +58,10 @@ public class DeliveryRepository {
                             WHERE d.status IN ('PENDING', 'RETRYING')
                               AND d.next_attempt_at <= now()
                               AND e.enabled AND e.deleted_at IS NULL
+                              -- Circuit breaker: nothing is claimed for an OPEN endpoint, and only the
+                              -- probe for a HALF_OPEN one. Skipped deliveries keep their status and budget.
+                              AND (NOT :circuitEnabled OR e.circuit_state = 'CLOSED'
+                                   OR (e.circuit_state = 'HALF_OPEN' AND e.half_open_probe_id = d.id))
                             ORDER BY d.next_attempt_at
                             LIMIT :limit
                             FOR UPDATE OF d SKIP LOCKED
@@ -73,6 +81,7 @@ public class DeliveryRepository {
                                   d.lease_token
                         """)
                 .param("limit", limit)
+                .param("circuitEnabled", circuitEnabled)
                 .param("owner", workerId)
                 .param("leaseSeconds", (double) leaseDuration.toMillis() / 1000.0)
                 .query((rs, n) -> new Claimed(

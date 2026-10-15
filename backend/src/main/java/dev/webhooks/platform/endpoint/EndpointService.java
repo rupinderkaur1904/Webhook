@@ -1,6 +1,10 @@
 package dev.webhooks.platform.endpoint;
 
+import dev.webhooks.platform.circuit.CircuitView;
 import dev.webhooks.platform.common.ApiException;
+import dev.webhooks.platform.common.TimeWindow;
+import dev.webhooks.platform.health.EndpointHealth;
+import dev.webhooks.platform.health.EndpointHealthService;
 import dev.webhooks.platform.config.WebhookProperties;
 import dev.webhooks.platform.crypto.SecretCipher;
 import dev.webhooks.platform.crypto.Tokens;
@@ -13,7 +17,10 @@ import dev.webhooks.platform.endpoint.EndpointDtos.UpdateEndpointRequest;
 import dev.webhooks.platform.ssrf.DestinationPolicy;
 import java.time.Duration;
 import java.time.Instant;
+import dev.webhooks.platform.metrics.MetricsDtos.EndpointHealthItem;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -27,9 +34,11 @@ public class EndpointService {
     private final SecretCipher cipher;
     private final DestinationPolicy destinationPolicy;
     private final int maxEndpointsPerAccount;
+    private final EndpointHealthService health;
 
     public EndpointService(EndpointRepository endpoints, SecretCipher cipher, DestinationPolicy destinationPolicy,
-            WebhookProperties properties) {
+            WebhookProperties properties, EndpointHealthService health) {
+        this.health = health;
         this.endpoints = endpoints;
         this.cipher = cipher;
         this.destinationPolicy = destinationPolicy;
@@ -47,18 +56,38 @@ public class EndpointService {
         UUID id = UUID.randomUUID();
         String secret = Tokens.newSigningSecret();
         Endpoint endpoint = new Endpoint(id, accountId, request.name().trim(), blankToNull(request.description()), url,
-                eventTypes(request.eventTypes()), true, secretPrefix(secret), null, Instant.now(), Instant.now());
+                eventTypes(request.eventTypes()), true, secretPrefix(secret), null, CircuitView.closed(), Instant.now(), Instant.now());
         try {
             endpoints.insert(endpoint, cipher.encrypt(secret, id));
         } catch (DuplicateKeyException e) {
             throw nameTaken();
         }
         Endpoint saved = endpoints.find(accountId, id).orElseThrow();
-        return new EndpointCreatedResponse(EndpointResponse.from(saved), secret);
+        return new EndpointCreatedResponse(response(accountId, saved), secret);
     }
 
     public List<EndpointResponse> list(UUID accountId) {
-        return endpoints.list(accountId).stream().map(EndpointResponse::from).toList();
+        List<Endpoint> all = endpoints.list(accountId);
+        Map<UUID, EndpointHealth> health = this.health.forEndpoints(accountId, all, TimeWindow.DAY);
+        return all.stream().map(e -> EndpointResponse.from(e, health.get(e.id()))).toList();
+    }
+
+    /** Every live endpoint's health over {@code window}, worst first, then by name. */
+    public List<EndpointHealthItem> healthList(UUID accountId, TimeWindow window) {
+        List<Endpoint> all = endpoints.list(accountId);
+        Map<UUID, EndpointHealth> health = this.health.forEndpoints(accountId, all, window);
+        return all.stream()
+                .map(e -> new EndpointHealthItem(e.id(), e.name(), e.circuit(), health.get(e.id())))
+                .sorted(Comparator.comparing((EndpointHealthItem i) -> i.health().status().severity()).thenComparing(EndpointHealthItem::name))
+                .toList();
+    }
+
+    public EndpointResponse response(UUID accountId, Endpoint endpoint) {
+        return EndpointResponse.from(endpoint, health.forEndpoint(accountId, endpoint, TimeWindow.DAY));
+    }
+
+    public EndpointHealth health(UUID accountId, UUID id, TimeWindow window) {
+        return health.forEndpoint(accountId, get(accountId, id), window);
     }
 
     public Endpoint get(UUID accountId, UUID id) {
@@ -78,6 +107,7 @@ public class EndpointService {
                 request.enabled() != null ? request.enabled() : current.enabled(),
                 current.secretPrefix(),
                 current.previousSecretExpiresAt(),
+                current.circuit(),
                 current.createdAt(),
                 current.updatedAt());
         try {
@@ -85,7 +115,7 @@ public class EndpointService {
         } catch (DuplicateKeyException e) {
             throw nameTaken();
         }
-        return EndpointResponse.from(get(accountId, id));
+        return response(accountId, get(accountId, id));
     }
 
     @Transactional

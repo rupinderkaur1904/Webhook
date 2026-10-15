@@ -44,7 +44,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # /actuator/prometheus needs METRICS_TOKEN as a bearer token (see SecurityConfig).
+        include: health,prometheus
+  metrics:
+    tags:
+      application: webhook-platform
   endpoint:
     health:
       show-details: never
@@ -69,8 +73,22 @@ webhooks:
     # The session cookie (WEBHOOKS_SESSION) is always HttpOnly and SameSite=Lax. Set
     # SESSION_COOKIE_SECURE=false only for plain-HTTP local development.
     session-cookie-secure: ${SESSION_COOKIE_SECURE:true}
+  metrics:
+    token: ${METRICS_TOKEN:}
+  # Per-endpoint circuit breaker (README "Circuit breaker and endpoint health").
+  circuit:
+    failure-threshold: ${CIRCUIT_FAILURE_THRESHOLD:10}
+    base-cooldown: ${CIRCUIT_BASE_COOLDOWN:30s}
+    max-cooldown: ${CIRCUIT_MAX_COOLDOWN:30m}
 
 logging:
+  structured:
+    # LOG_FORMAT=ecs (or logstash, gelf) switches the console to one JSON object per line, with the
+    # request id and delivery context (MDC) as fields. Empty: the plain-text pattern below.
+    format:
+      console: ${LOG_FORMAT:}
+    json:
+      customizer: dev.webhooks.platform.observability.SecretMaskingJsonMembersCustomizer
   pattern:
     # Request id on every line; anything shaped like a signing secret or API key is masked, as a
     # backstop (no code path is meant to log one).

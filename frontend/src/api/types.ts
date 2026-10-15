@@ -18,8 +18,44 @@ export interface Endpoint {
   secretPrefix: string;
   /** Set while a rotated-out secret still signs deliveries alongside the current one. */
   previousSecretExpiresAt: string | null;
+  circuit: Circuit;
+  /** Health over the last 24 hours. */
+  health: EndpointHealth;
   createdAt: string;
   updatedAt: string;
+}
+
+export type CircuitState = 'CLOSED' | 'OPEN' | 'HALF_OPEN';
+
+export interface Circuit {
+  state: CircuitState;
+  consecutiveFailures: number;
+  openedAt: string | null;
+  /** OPEN: when a probe delivery will next be allowed. */
+  retryAt: string | null;
+}
+
+export type HealthStatus = 'HEALTHY' | 'DEGRADED' | 'FAILING' | 'NO_DATA' | 'DISABLED';
+
+export interface EndpointHealth {
+  status: HealthStatus;
+  window: MetricsWindow;
+  attempts: number;
+  failedAttempts: number;
+  successRate: number | null;
+  latencyP50Ms: number | null;
+  latencyP95Ms: number | null;
+  deadLetters: number;
+  lastSuccessAt: string | null;
+  /** The most recent failed attempt, at any time. */
+  lastFailure: { at: string; outcome: string | null; responseStatus: number | null; error: string | null } | null;
+}
+
+export interface EndpointHealthItem {
+  endpointId: string;
+  name: string;
+  circuit: Circuit;
+  health: EndpointHealth;
 }
 
 export interface SecretRotated {
@@ -191,6 +227,8 @@ export interface Overview {
     latencyP95Ms: number | null;
   };
   recentActivity: RecentAttempt[];
+  /** Every endpoint, worst health first, over the same window. */
+  endpointHealth: EndpointHealthItem[];
 }
 
 export interface Problem {

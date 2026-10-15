@@ -3,6 +3,8 @@ package dev.webhooks.platform.endpoint;
 import static dev.webhooks.platform.common.Jdbc.instant;
 import static dev.webhooks.platform.common.Jdbc.offset;
 
+import dev.webhooks.platform.circuit.CircuitState;
+import dev.webhooks.platform.circuit.CircuitView;
 import java.sql.Array;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -20,6 +22,7 @@ public class EndpointRepository {
     private static final String COLUMNS = """
             id, account_id, name, description, url, event_types, enabled, secret_prefix,
             CASE WHEN previous_secret_expires_at > now() THEN previous_secret_expires_at END AS previous_secret_expires_at,
+            circuit_state, consecutive_failures, circuit_opened_at, circuit_retry_at,
             created_at, updated_at
             """;
 
@@ -169,6 +172,8 @@ public class EndpointRepository {
                 rs.getBoolean("enabled"),
                 rs.getString("secret_prefix"),
                 instant(rs, "previous_secret_expires_at"),
+                new CircuitView(CircuitState.valueOf(rs.getString("circuit_state")), rs.getInt("consecutive_failures"),
+                        instant(rs, "circuit_opened_at"), instant(rs, "circuit_retry_at")),
                 instant(rs, "created_at"),
                 instant(rs, "updated_at"));
     }

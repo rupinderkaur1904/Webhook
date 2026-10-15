@@ -6,7 +6,7 @@ import type { ApiKey } from '../api/types';
 import { App } from '../App';
 import { ApiKeysPage } from '../pages/ApiKeysPage';
 import { EndpointDetailPage } from '../pages/EndpointDetailPage';
-import { endpoint } from './fixtures';
+import { endpoint, healthy } from './fixtures';
 import { jsonResponse, mockApi, renderAt } from './render';
 
 const unauthenticated = () => jsonResponse({ status: 401, code: 'UNAUTHENTICATED', detail: 'Sign in' }, 401);
@@ -160,6 +160,7 @@ describe('secret rotation', () => {
         previousSecretExpiresAt: '2026-10-16T03:00:00Z',
       },
       [`/api/v1/endpoints/${endpoint.id}`]: endpoint,
+      [`/api/v1/endpoints/${endpoint.id}/health`]: healthy,
       '/api/v1/deliveries': empty,
     });
     renderAt(`/endpoints/${endpoint.id}`, '/endpoints/:id', <EndpointDetailPage />);
