@@ -79,6 +79,18 @@ export function useSetEndpointEnabled() {
   });
 }
 
+export type EndpointChanges = { name: string; url: string; description: string; eventTypes: string[] };
+
+/** Updates an endpoint's settings. An empty description clears it. */
+export function useUpdateEndpoint() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...changes }: EndpointChanges & { id: string }) =>
+      api<Endpoint>(`/api/v1/endpoints/${id}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['endpoints'] }),
+  });
+}
+
 export function useSendTestEvent() {
   const client = useQueryClient();
   return useMutation({

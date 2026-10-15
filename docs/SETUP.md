@@ -13,7 +13,7 @@ docker compose up -d db          # or use an existing PostgreSQL with a 'webhook
 SPRING_PROFILES_ACTIVE=local java -jar backend/target/webhook-platform-0.1.0-SNAPSHOT.jar   # :8080
 
 ./mvnw -pl receiver-simulator package -DskipTests
-java -jar receiver-simulator/target/receiver-simulator-0.1.0-SNAPSHOT.jar                   # :9090
+SIMULATOR_OPEN_CONTROL_API=true java -jar receiver-simulator/target/receiver-simulator-0.1.0-SNAPSHOT.jar   # :9090
 
 cd frontend && npm ci && npm run dev                                                        # :5173, proxies /api to :8080
 ```
@@ -67,7 +67,7 @@ The `local` profile shortens the circuit cool-down to 5s so `breaker` finishes i
 
 ## Failure simulator
 
-The simulator runs as its own app on port 9090. `PUT /receivers/{name}/config` accepts the following fields:
+The simulator runs as its own app on port 9090. Webhooks go to `POST /receivers/{name}`: register endpoints as `http://localhost:9090/receivers/<name>` (or `http://simulator:9090/receivers/<name>` under Compose); a receiver is created on first use. Without `SIMULATOR_CONTROL_TOKEN` it starts only with `SIMULATOR_OPEN_CONTROL_API=true` (see [SECURITY.md](SECURITY.md#the-public-receiver-simulator)). `PUT /receivers/{name}/config` accepts the following fields:
 
 ```json
 {

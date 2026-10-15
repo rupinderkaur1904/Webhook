@@ -57,6 +57,11 @@ services:
       context: .
       target: simulator
     image: webhook-simulator:local
+    environment:
+      # Local only: the control API (receiver config, request logs) stays open without a token.
+      # A public deployment sets SIMULATOR_CONTROL_TOKEN instead; without either, the simulator
+      # refuses to start.
+      SIMULATOR_OPEN_CONTROL_API: "true"
     ports:
       - "${SIMULATOR_PORT:-9090}:9090"
 

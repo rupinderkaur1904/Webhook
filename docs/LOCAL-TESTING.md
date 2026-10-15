@@ -123,7 +123,8 @@ Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json"
 ### 5.3 Create an endpoint
 
 1. In the dashboard, open **Endpoints** and click **Register endpoint**.
-2. Name: `Orders`. URL: `http://simulator:9090/receivers/orders`
+2. Name: `Orders`. URL: **`http://simulator:9090/receivers/orders`**
+   - The URL must end in `/receivers/<name>`. `<name>` can be anything (letters, digits, `-`, `_`) and the simulator creates that receiver on first use; the commands in this guide use `orders`. The bare address `http://simulator:9090` is the simulator itself, not a receiver: deliveries to it get `HTTP 404` and are dead-lettered at once, because a 4xx is a permanent failure.
    - Use `simulator`, not `localhost`: the platform runs inside Docker and reaches the simulator by its service name. For safety the platform refuses private and local addresses; the local setup allows only the simulator.
 3. Click **Register**. The **signing secret** (`whsec_…`) is shown **once**. Click **Copy secret**, then **Done**.
 4. Give the secret to the simulator so it can check signatures. Replace the value between the quotes with the secret you copied:
@@ -194,18 +195,23 @@ A `400` from the receiver is different: it is treated as permanent and dead-lett
 2. Send a test event. The simulator still shows `VALID` with the **old** secret, because during the grace period every delivery carries two signatures.
 3. Update the simulator to the new secret (as in step 5.3, with the new value) and send another test event. It is `VALID` again.
 
-### 5.9 API keys
+### 5.9 Edit an endpoint
+
+On the endpoint page, click **Edit** to change its name, URL, description or event types. Deliveries that are queued or retrying go to the new URL; dead letters are not retried, so replay them after saving (step 5.7). This is how you fix an endpoint registered with the wrong URL.
+
+### 5.10 API keys
 
 1. Open **API keys** and click **Create API key**. The full key is shown **once**.
 2. Click **Revoke** on it and confirm. Requests with that key are refused immediately.
 
 API keys can only submit events and read data. They cannot change endpoints, replay or manage keys; those need a dashboard sign-in.
 
-### 5.10 Dashboard metrics and endpoint health
+### 5.11 Dashboard metrics and endpoint health
 
 1. Open **Overview** and switch between **1h**, **24h** and **7d**. The tiles show events submitted, delivered and dead-lettered counts, the delivery and attempt success rates, attempt latency (p50/p95), and what is waiting to retry or in flight right now.
 2. **Endpoint health** lists each endpoint, worst first. After the failures above, `Orders` shows as degraded.
-3. **Recent attempts** lists the latest attempts across all endpoints.
+3. On the endpoint page, the **Health** card shows the attempt success rate, latency, dead letters and the last failure. Below it, the circuit breaker line says whether deliveries are paused. *Circuit closed* means they are not paused; it does not mean there were no failures. The circuit only opens after 10 consecutive failures that suggest the receiver is down (5xx, timeouts, connection errors), not on 4xx responses.
+4. **Recent attempts** lists the latest attempts across all endpoints.
 
 **Circuit breaker (optional):** set the receiver to `status = 500` and send 10 or more test events. After 10 consecutive failures the endpoint's circuit **opens**: the endpoint page shows it, and queued deliveries wait without using up their retries. Set the receiver back to `200`; after a short cool-down (5 s locally) one probe delivery succeeds, the circuit closes and the backlog is delivered. **Close circuit now** on the endpoint page closes it by hand.
 
@@ -215,7 +221,7 @@ API keys can only submit events and read data. They cannot change endpoints, rep
 Invoke-RestMethod -Uri "http://localhost:8080/actuator/prometheus" -Headers @{ Authorization = "Bearer local-dev-metrics-token-00000000" } | Select-String "webhooks_"
 ```
 
-### 5.11 Sign out
+### 5.12 Sign out
 
 Click **Sign out** in the header. You return to the sign-in page, and the old session no longer works.
 
@@ -239,6 +245,7 @@ Run `scripts/demo.sh` with no argument for the full list (see [SETUP.md](SETUP.m
 | Start again after a pause or a reboot | `docker compose start` (or `docker compose up -d`) | Kept |
 | Stop and remove the containers | `docker compose down` | **Kept**: the database lives in the `pgdata` volume |
 | Rebuild after `git pull` | `docker compose up -d --build` | Kept |
+| Rebuild one service | `docker compose up -d --build app` (or `simulator`) | Kept |
 | **Delete everything and start from an empty database** | `docker compose down -v` | **Deleted**: endpoints, events, deliveries, API keys |
 
 Endpoints, events, deliveries, attempts, API keys and sign-in sessions are stored in PostgreSQL, so they survive every command above except `down -v`. The **simulator's request log is kept in memory only** and starts empty after the simulator restarts; its receivers also need their config set again (step 5.2).
@@ -268,6 +275,9 @@ Then apply the change with `docker compose up -d`.
 | Build fails with `/bin/sh^M` or `mvnw: not found` | The checkout has Windows line endings. Clone a fresh copy (step 2). |
 | `app` stays `(health: starting)` for several minutes | Run `docker compose logs app` and look for the first `ERROR`. |
 | An endpoint with `http://localhost:9090/...` is refused | Use `http://simulator:9090/receivers/<name>`. |
+| Delivery fails with `HTTP 404` and is dead-lettered after one attempt | The endpoint URL is missing `/receivers/<name>`; the attempt's response body says so. Click **Edit** on the endpoint, fix the URL, then **Replay** the dead letter. |
+| Simulator log: *control API is open* | Expected locally: Compose sets `SIMULATOR_OPEN_CONTROL_API=true` so you can configure receivers without a token. A public simulator uses `SIMULATOR_CONTROL_TOKEN` instead, and without either the simulator refuses to start. |
+| Simulator exits with *SIMULATOR_CONTROL_TOKEN is not set* | It was started outside Compose without a token. Set `SIMULATOR_CONTROL_TOKEN`, or `SIMULATOR_OPEN_CONTROL_API=true` on your own machine only. |
 | Deliveries fail with `connection refused` | The simulator is not running: `docker compose ps`, then `docker compose start simulator`. |
 | Signature shows `INVALID_SIGNATURE` in the simulator | The simulator has an old secret. Set the current one (step 5.3). |
 | *Too many requests* on sign-in | Wait one minute. |

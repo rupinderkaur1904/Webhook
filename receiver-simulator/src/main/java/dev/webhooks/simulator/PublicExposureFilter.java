@@ -23,8 +23,10 @@ import org.springframework.web.filter.OncePerRequestFilter;
  *   <li><b>Control token.</b> With {@code SIMULATOR_CONTROL_TOKEN} set, everything except receiving
  *       webhooks ({@code POST /receivers/{name}}) and {@code GET /healthz} needs
  *       {@code Authorization: Bearer <token>}: configuring receivers, reading their request logs
- *       (which contain payloads), deleting them and {@code /verify}. Without a token the control API
- *       is open, which is meant for local use only.</li>
+ *       (which contain payloads), deleting them and {@code /verify}. Without a token the simulator
+ *       refuses to start, unless {@code SIMULATOR_OPEN_CONTROL_API=true} explicitly opens the control
+ *       API for local use (Docker Compose sets it). A deployment that forgets the token therefore
+ *       fails instead of exposing the control API.</li>
  *   <li><b>Body limit.</b> Request bodies over 1 MB are refused, declared or chunked.</li>
  * </ul>
  */
@@ -36,10 +38,16 @@ public class PublicExposureFilter extends OncePerRequestFilter {
 
     private final byte[] token;
 
-    public PublicExposureFilter(@Value("${simulator.control-token:}") String token) {
+    public PublicExposureFilter(@Value("${simulator.control-token:}") String token,
+            @Value("${simulator.open-control-api:false}") boolean openControlApi) {
         this.token = token == null || token.isBlank() ? null : token.getBytes(StandardCharsets.UTF_8);
         if (this.token == null) {
-            log.warn("SIMULATOR_CONTROL_TOKEN is not set: the control API is open. Set it before exposing the simulator publicly.");
+            if (!openControlApi) {
+                throw new IllegalStateException("SIMULATOR_CONTROL_TOKEN is not set. Set it to protect the control API, "
+                        + "or set SIMULATOR_OPEN_CONTROL_API=true to leave it open on a machine nobody else can reach.");
+            }
+            log.warn("SIMULATOR_OPEN_CONTROL_API=true and no SIMULATOR_CONTROL_TOKEN: the control API is open. "
+                    + "Local use only; never expose this simulator publicly.");
         }
     }
 
@@ -59,13 +67,18 @@ public class PublicExposureFilter extends OncePerRequestFilter {
         chain.doFilter(new LimitedRequest(request), response);
     }
 
-    /** Webhook deliveries and the health check are open; everything else is control. */
+    /**
+     * Webhook deliveries and the health check are open; everything else is control. A POST to the root
+     * or to {@code /receivers} is open too: it only returns the hint that names the right path, so a
+     * misconfigured endpoint sees why its delivery failed instead of a token error.
+     */
     static boolean isPublic(HttpServletRequest request) {
         String path = request.getRequestURI();
         if (HttpMethod.GET.matches(request.getMethod()) && path.equals("/healthz")) {
             return true;
         }
-        return HttpMethod.POST.matches(request.getMethod()) && path.matches("/receivers/[^/]+");
+        return HttpMethod.POST.matches(request.getMethod())
+                && (path.matches("/receivers/[^/]+") || ReceiverController.WRONG_PATHS.contains(path));
     }
 
     private boolean hasToken(HttpServletRequest request) {

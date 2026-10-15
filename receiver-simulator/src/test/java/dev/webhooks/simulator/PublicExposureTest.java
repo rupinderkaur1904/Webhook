@@ -36,6 +36,8 @@ class PublicExposureTest {
     void deliveriesAndHealthAreOpenButTheControlApiNeedsTheToken() throws Exception {
         mvc.perform(post("/receivers/open").content("{}")).andExpect(status().isOk());
         mvc.perform(get("/healthz")).andExpect(status().isOk());
+        // A misconfigured endpoint URL gets the hint, not a token error.
+        mvc.perform(post("/").content("{}")).andExpect(status().isNotFound());
 
         mvc.perform(get("/receivers/open/requests")).andExpect(status().isUnauthorized());
         mvc.perform(get("/receivers/open/requests").header("Authorization", "Bearer wrong")).andExpect(status().isUnauthorized());
@@ -78,5 +80,16 @@ class PublicExposureTest {
         assertThat(declared).isEqualTo(413);
         assertThat(chunked).isEqualTo(413);
         registry.reset("big");
+    }
+
+    @Test
+    void withoutATokenTheSimulatorRefusesToStartUnlessTheControlApiIsOpenedExplicitly() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new PublicExposureFilter("", false))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("SIMULATOR_CONTROL_TOKEN");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> new PublicExposureFilter("  ", false))
+                .isInstanceOf(IllegalStateException.class);
+        new PublicExposureFilter("", true);
+        new PublicExposureFilter("a-token", false);
     }
 }

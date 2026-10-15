@@ -44,6 +44,21 @@ public class ReceiverController {
         return Map.of("status", "UP");
     }
 
+    /** Paths an endpoint URL commonly stops at by mistake (e.g. {@code http://simulator:9090}). */
+    static final List<String> WRONG_PATHS = List.of("/", "/receivers", "/receivers/");
+
+    /**
+     * A delivery to the simulator's root instead of a named receiver. The platform records this body on
+     * the attempt, so the dashboard shows how to fix the endpoint URL.
+     */
+    @PostMapping({"/", "/receivers", "/receivers/"})
+    ResponseEntity<Map<String, Object>> wrongPath(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "No receiver at " + request.getRequestURI(),
+                "hint", "Webhooks go to /receivers/{name}, for example http://simulator:9090/receivers/demo. "
+                        + "Any name works and is created on first use."));
+    }
+
     @PostMapping("/receivers/{name}")
     ResponseEntity<Map<String, Object>> receive(@PathVariable String name, HttpServletRequest request,
             @RequestBody(required = false) byte[] body) throws InterruptedException {

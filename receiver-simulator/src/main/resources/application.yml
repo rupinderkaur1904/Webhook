@@ -6,4 +6,6 @@ spring:
 simulator:
   # Required before the simulator is reachable from the internet (see PublicExposureFilter).
   control-token: ${SIMULATOR_CONTROL_TOKEN:}
+  # Without a token the simulator refuses to start unless this is true (local use only).
+  open-control-api: ${SIMULATOR_OPEN_CONTROL_API:false}
   max-receivers: ${SIMULATOR_MAX_RECEIVERS:50}

@@ -3,10 +3,10 @@
 | Suite | Command | What it needs | Count (last run) |
 |---|---|---|---|
 | Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 308 |
-| Receiver simulator | included in `./mvnw verify` | nothing | 19 |
-| Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 34 |
+| Receiver simulator | included in `./mvnw verify` | nothing | 21 |
+| Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 36 |
 | API contract and generated types | `OpenApiContractTest` (in `verify`); `npm run gen:api && git diff --exit-code src/api/schema.ts` | | 1 |
-| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 7 |
+| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 8 |
 | Receiver examples | see [below](#receiver-examples) | Java 21, Node 22, Python 3 | 22 / 19 / 19 |
 | Compose demos | `scripts/demo.sh <scenario>` | the Compose stack, bash, `jq` | 14 scenarios |
 
@@ -77,7 +77,8 @@ The Playwright suite (`frontend/e2e/`) drives a real browser against a running s
 4. a receiver answering `500` then `503` then `200` is retried until delivered, with one `webhook-id` throughout;
 5. a receiver that always answers `503` exhausts the retries, the delivery appears under **Dead letters**, and **Replay** delivers it after the receiver is fixed, leaving the dead letter unchanged;
 6. an API key is shown once, works, and is refused after **Revoke**;
-7. a rotated secret is shown once, and during the grace period receivers on the old and on the new secret both verify.
+7. a rotated secret is shown once, and during the grace period receivers on the old and on the new secret both verify;
+8. an endpoint registered with the simulator's base URL gets `HTTP 404` with a hint naming `/receivers/{name}`, is fixed with **Edit**, and the dead letter is replayed and verified.
 
 ```bash
 docker compose up -d --build          # from the repository root

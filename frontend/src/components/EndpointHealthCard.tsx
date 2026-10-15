@@ -27,7 +27,7 @@ function CircuitExplanation({ endpoint }: { endpoint: Endpoint }) {
   return c.consecutiveFailures > 0 ? (
     <>{c.consecutiveFailures} consecutive failed attempts. The circuit opens at the configured threshold.</>
   ) : (
-    <>Deliveries flow normally.</>
+    <>Circuit closed: deliveries to this endpoint are not paused. It only tracks failures that suggest the receiver is down; the health figures above count every failed attempt and dead letter.</>
   );
 }
 
