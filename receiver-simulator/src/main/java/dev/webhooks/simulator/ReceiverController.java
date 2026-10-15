@@ -2,6 +2,7 @@ package dev.webhooks.simulator;
 
 import dev.webhooks.simulator.ReceiverRegistry.Behaviour;
 import dev.webhooks.simulator.ReceiverRegistry.ReceivedRequest;
+import dev.webhooks.simulator.ReceiverRegistry.Response;
 import jakarta.servlet.http.HttpServletRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -23,7 +24,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Webhook target: {@code POST /receivers/{name}}. Control API under the same path:
- * {@code PUT .../config}, {@code GET .../requests}, {@code DELETE /receivers/{name}}.
+ * {@code PUT .../config}, {@code GET .../requests}, {@code DELETE /receivers/{name}}; plus
+ * {@code POST /verify} for checking a signature by hand.
  */
 @RestController
 public class ReceiverController {
@@ -51,15 +53,16 @@ public class ReceiverController {
         for (String header : Collections.list(request.getHeaderNames())) {
             headers.put(header.toLowerCase(), request.getHeader(header));
         }
+        Response response = receiver.nextResponse();
         ReceivedRequest recorded = receiver.record(Instant.now(), request.getHeader("webhook-id"),
                 request.getHeader("x-webhook-delivery-id"), request.getHeader("x-webhook-attempt"), signature,
-                behaviour.status(), headers, new String(bytes, StandardCharsets.UTF_8));
+                response, headers, new String(bytes, StandardCharsets.UTF_8));
 
-        if (behaviour.delayMs() > 0) {
-            Thread.sleep(behaviour.delayMs());
+        if (response.delayMs() > 0) {
+            Thread.sleep(response.delayMs());
         }
-        return ResponseEntity.status(behaviour.status())
-                .headers(h -> behaviour.headers().forEach(h::set))
+        return ResponseEntity.status(response.status())
+                .headers(h -> response.headers().forEach(h::set))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("receiver", name, "sequence", recorded.sequence(), "duplicate", recorded.duplicate(),
                         "signature", signature));
@@ -67,8 +70,9 @@ public class ReceiverController {
 
     @PutMapping("/receivers/{name}/config")
     Behaviour configure(@PathVariable String name, @RequestBody Behaviour behaviour) {
-        if (behaviour.status() < 100 || behaviour.status() > 599 || behaviour.delayMs() < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status must be 100-599 and delayMs >= 0");
+        String problem = behaviour.validate();
+        if (problem != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, problem);
         }
         registry.get(name).configure(behaviour);
         return behaviour;
@@ -83,6 +87,24 @@ public class ReceiverController {
     List<ReceivedRequest> requests(@PathVariable String name) {
         return registry.get(name).requests();
     }
+
+    /**
+     * Checks a signature the way a receiver would, for demonstrating that a tampered body or a
+     * wrong secret is rejected. Uses the current time for the timestamp tolerance check.
+     */
+    @PostMapping("/verify")
+    Map<String, String> verify(@RequestBody VerifyRequest request) {
+        if (request.secret() == null || request.body() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "secret and body are required");
+        }
+        var result = SignatureVerifier.verify(request.secret(), request.webhookId(), request.webhookTimestamp(),
+                request.webhookSignature(), request.body().getBytes(StandardCharsets.UTF_8), Instant.now(),
+                SignatureVerifier.DEFAULT_TOLERANCE);
+        return Map.of("result", result.name());
+    }
+
+    record VerifyRequest(String secret, String webhookId, String webhookTimestamp, String webhookSignature,
+            String body) {}
 
     @DeleteMapping("/receivers/{name}")
     ResponseEntity<Void> reset(@PathVariable String name) {

@@ -5,7 +5,9 @@ import static dev.webhooks.platform.common.Jdbc.offset;
 
 import dev.webhooks.platform.common.Cursor;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -55,33 +57,49 @@ public class EventRepository {
                 .optional();
     }
 
-    public List<EventDtos.EventSummary> list(UUID accountId, String eventType, Cursor cursor, int limit) {
+    /** Events newest first, with per-status delivery counts. {@code from} is inclusive, {@code to} exclusive. */
+    public List<EventDtos.EventSummary> list(UUID accountId, String eventType, Instant from, Instant to, Cursor cursor,
+            int limit) {
         StringBuilder sql = new StringBuilder("""
                 SELECT e.id, e.event_type, e.idempotency_key, e.created_at,
-                       (SELECT count(*) FROM deliveries d WHERE d.event_id = e.id) AS delivery_count
+                       count(d.id) AS delivery_count,
+                       count(d.id) FILTER (WHERE d.status = 'DELIVERED') AS delivered_count,
+                       count(d.id) FILTER (WHERE d.status = 'DEAD_LETTERED') AS dead_lettered_count,
+                       count(d.id) FILTER (WHERE d.status IN ('PENDING', 'RETRYING', 'IN_FLIGHT')) AS active_count
                 FROM events e
+                LEFT JOIN deliveries d ON d.event_id = e.id
                 WHERE e.account_id = :account
                 """);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("account", accountId);
         if (eventType != null) {
             sql.append(" AND e.event_type = :type");
+            params.put("type", eventType);
+        }
+        if (from != null) {
+            sql.append(" AND e.created_at >= :from");
+            params.put("from", offset(from));
+        }
+        if (to != null) {
+            sql.append(" AND e.created_at < :to");
+            params.put("to", offset(to));
         }
         if (cursor != null) {
             sql.append(" AND (e.created_at, e.id) < (:cursorAt, :cursorId)");
+            params.put("cursorAt", offset(cursor.createdAt()));
+            params.put("cursorId", cursor.id());
         }
-        sql.append(" ORDER BY e.created_at DESC, e.id DESC LIMIT :limit");
-        var statement = jdbc.sql(sql.toString()).param("account", accountId).param("limit", limit);
-        if (eventType != null) {
-            statement = statement.param("type", eventType);
-        }
-        if (cursor != null) {
-            statement = statement.param("cursorAt", offset(cursor.createdAt())).param("cursorId", cursor.id());
-        }
-        return statement.query((rs, n) -> new EventDtos.EventSummary(
+        sql.append(" GROUP BY e.id ORDER BY e.created_at DESC, e.id DESC LIMIT :limit");
+        params.put("limit", limit);
+        return jdbc.sql(sql.toString()).params(params).query((rs, n) -> new EventDtos.EventSummary(
                         rs.getObject("id", UUID.class),
                         rs.getString("event_type"),
                         rs.getString("idempotency_key"),
                         instant(rs, "created_at"),
-                        rs.getInt("delivery_count")))
+                        rs.getInt("delivery_count"),
+                        rs.getInt("delivered_count"),
+                        rs.getInt("dead_lettered_count"),
+                        rs.getInt("active_count")))
                 .list();
     }
 

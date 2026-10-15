@@ -65,4 +65,38 @@ class ReceiverControllerTest {
                         .content("{\"status\":42,\"delayMs\":0}"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void scriptedSequenceIsServedOverHttp() throws Exception {
+        mvc.perform(put("/receivers/e/config").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":200,\"delayMs\":0,\"script\":[{\"status\":500},{\"status\":503}]}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/receivers/e").content("{}")).andExpect(status().isInternalServerError());
+        mvc.perform(post("/receivers/e").content("{}")).andExpect(status().isServiceUnavailable());
+        mvc.perform(post("/receivers/e").content("{}")).andExpect(status().isOk());
+        mvc.perform(get("/receivers/e/requests"))
+                .andExpect(jsonPath("$[0].rule").value("script 1/2"))
+                .andExpect(jsonPath("$[2].rule").value("default"));
+    }
+
+    @Test
+    void verifyEndpointAcceptsGenuineAndRejectsTamperedBody() throws Exception {
+        String secret = "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw";
+        String ts = Long.toString(java.time.Instant.now().getEpochSecond());
+        String body = "{\"amount\":1}";
+        String signature = "v1," + java.util.Base64.getEncoder().encodeToString(
+                SignatureVerifier.hmac(secret, "msg_1." + ts + ".", body.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        String template = "{\"secret\":\"%s\",\"webhookId\":\"msg_1\",\"webhookTimestamp\":\"%s\",\"webhookSignature\":\"%s\",\"body\":%s}";
+
+        mvc.perform(post("/verify").contentType(MediaType.APPLICATION_JSON)
+                        .content(template.formatted(secret, ts, signature, quote(body))))
+                .andExpect(jsonPath("$.result").value("VALID"));
+        mvc.perform(post("/verify").contentType(MediaType.APPLICATION_JSON)
+                        .content(template.formatted(secret, ts, signature, quote("{\"amount\":1000}"))))
+                .andExpect(jsonPath("$.result").value("INVALID_SIGNATURE"));
+    }
+
+    private static String quote(String s) {
+        return "\"" + s.replace("\"", "\\\"") + "\"";
+    }
 }

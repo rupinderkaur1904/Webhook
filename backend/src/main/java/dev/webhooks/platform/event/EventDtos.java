@@ -30,7 +30,9 @@ public final class EventDtos {
     public record EventAcceptedResponse(
             UUID id, String eventType, String idempotencyKey, Instant createdAt, List<AcceptedDelivery> deliveries) {}
 
-    public record EventSummary(UUID id, String eventType, String idempotencyKey, Instant createdAt, int deliveryCount) {}
+    /** {@code activeCount} counts deliveries still pending, retrying or in flight. */
+    public record EventSummary(UUID id, String eventType, String idempotencyKey, Instant createdAt, int deliveryCount,
+            int deliveredCount, int deadLetteredCount, int activeCount) {}
 
     public record EventDetail(
             UUID id,

@@ -12,6 +12,9 @@ webhooks:
       - localhost:9090
       - 127.0.0.1:9090
       - simulator:9090
+  # A short response timeout so the timeout scenario does not take long to watch.
+  delivery:
+    response-timeout: 5s
   # Short delays so retries and exhaustion can be watched live in a demo.
   retry:
     max-attempts: 4

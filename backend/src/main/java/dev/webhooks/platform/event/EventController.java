@@ -10,6 +10,7 @@ import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
 import dev.webhooks.platform.event.EventDtos.EventDetail;
 import dev.webhooks.platform.event.EventDtos.EventSummary;
 import jakarta.validation.Valid;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -62,10 +63,12 @@ public class EventController {
     @GetMapping
     Page<EventSummary> list(@AuthenticationPrincipal AccountPrincipal principal,
             @RequestParam(required = false) String eventType,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor) {
         int size = Page.checkLimit(limit);
-        List<EventSummary> rows = events.list(principal.accountId(), eventType,
+        List<EventSummary> rows = events.list(principal.accountId(), eventType, from, to,
                 cursor == null ? null : Cursor.decode(cursor), size + 1);
         String next = null;
         if (rows.size() > size) {

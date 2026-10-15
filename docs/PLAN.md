@@ -898,4 +898,24 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **Retry policy settings:** `webhooks.retry.{max-attempts, base-delay, max-delay, max-retry-after}` replaces the Stage 1 `webhooks.delivery.max-attempts`. Defaults are as in §7.3. The `local` profile uses 4 attempts and a 2s base delay so demos run in seconds.
 - **`Retry-After` is honoured only on 429 and 503.** On other statuses it is ignored and not stored on the attempt, because it carries no scheduling meaning there. It can only lengthen a delay, never shorten one, and never adds attempts.
 - **Endpoint deleted mid-attempt:** if a retryable failure comes back after its endpoint was deleted, the delivery is marked `CANCELLED` instead of `RETRYING`, in the same conditional update.
-- **The simulator accepts configurable response headers** (e.g. `Retry-After`). Scripted response sequences and intermittent failures are still planned for Stage 3. In the meantime, `scripts/demo.sh` reconfigures the receiver while a delivery is in progress.
+- **The simulator accepts configurable response headers** (e.g. `Retry-After`). Scripted sequences and intermittent failures followed in Stage 3.
+
+**Stage 3**
+- **Replay** follows §7.7.
+  - Concurrency control is the `deliveries_active_chain_uq` partial unique index. A losing concurrent request gets `REPLAY_IN_PROGRESS`, which is also the error when the index is hit directly.
+  - The replay transaction takes `FOR SHARE` on the endpoint row, so a concurrent soft delete either happens first (the replay is refused) or waits and then cancels the new replay.
+  - Any dead-lettered delivery in a chain can be replayed, including a replay that dead-lettered itself. The limit (`webhooks.replay.max-per-delivery`, default 10) counts every replay in the chain.
+  - `EVENT_PURGED` is not reachable yet: events and their deliveries are deleted together, and retention arrives later. Bulk replay remains postponed, as planned.
+- **Delivery detail** gains `replayEligibility` and `chain`. The "request headers sent" field from §5.4 is not shown. Headers are not stored per attempt, and recomputing them would show a timestamp and signature that differ from what was sent.
+- **The overview metrics API (§5.5) arrived in Stage 3 instead of Stage 6,** so the dashboard has a real overview page now. `endpointHealth` is left out until the circuit breaker exists in Stage 6. Attempt metrics are windowed by `started_at` and add p50/p95 latency. Migration V2 adds indexes for the windowed counts and chain lookups.
+- **Simulator** scripting, as described in the README:
+  - ordered response `script` steps;
+  - seeded `failureRate`;
+  - per-step delays and headers;
+  - a `rule` field on each logged request, recording why that response was chosen;
+  - `POST /verify` for signature checks.
+
+  The demo script no longer reconfigures a receiver while a delivery is in progress, except where a person would act: fixing the receiver before a replay.
+- **`local` profile response timeout is 5s** (15s by default), so the timeout demo finishes quickly.
+- **Frontend types are still hand-written** (`src/api/types.ts`) and mirror the DTOs. Generating them from OpenAPI (§5.5) is moved to Stage 7, together with the Playwright suite.
+

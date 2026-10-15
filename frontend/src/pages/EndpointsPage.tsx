@@ -1,13 +1,10 @@
-import { Alert, Badge, Button, Code, CopyButton, Group, Modal, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Code, CopyButton, Group, Modal, Stack, Switch, Table, Text, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
-import { ApiError } from '../api/client';
+import { Link } from 'react-router-dom';
+import { errorMessage } from '../api/client';
 import { useCreateEndpoint, useEndpoints, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
 import { EmptyState, QueryState } from '../components/QueryState';
-
-function errorMessage(error: unknown) {
-  return error instanceof ApiError ? error.problem.detail : 'Request failed';
-}
 
 function CreateEndpointModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const create = useCreateEndpoint();
@@ -97,7 +94,11 @@ export function EndpointsPage() {
             <Table.Tbody>
               {endpoints.data?.map((endpoint) => (
                 <Table.Tr key={endpoint.id}>
-                  <Table.Td>{endpoint.name}</Table.Td>
+                  <Table.Td>
+                    <Anchor component={Link} to={`/endpoints/${endpoint.id}`}>
+                      {endpoint.name}
+                    </Anchor>
+                  </Table.Td>
                   <Table.Td>
                     <Text size="sm" style={{ wordBreak: 'break-all' }}>
                       {endpoint.url}

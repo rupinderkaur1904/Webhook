@@ -53,3 +53,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
+
+/** The message to show for a failed request: the server's problem detail when there is one. */
+export function errorMessage(error: unknown): string {
+  return error instanceof ApiError ? error.problem.detail : 'Request failed';
+}

@@ -12,6 +12,8 @@ webhooks:
     base-delay: 10s
     max-delay: 60s
     max-retry-after: 300s
+  replay:
+    max-per-delivery: 2
   ssrf:
     # Host-only entry: the in-process test receiver listens on a random port.
     allowed-hosts:
