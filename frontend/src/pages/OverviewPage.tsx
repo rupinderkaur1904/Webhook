@@ -135,7 +135,7 @@ export function OverviewPage() {
                         <Table.Td>
                           <Badge
                             variant="light"
-                            color={a.status === 'SUCCEEDED' ? 'green' : a.status === 'STARTED' ? 'blue' : 'red'}
+                            color={a.status === 'SUCCEEDED' ? 'green' : a.status === 'STARTED' ? 'blue' : a.status === 'ABANDONED' ? 'orange' : 'red'}
                           >
                             {a.outcome ?? a.status}
                           </Badge>

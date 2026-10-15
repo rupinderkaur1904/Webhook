@@ -919,3 +919,16 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **`local` profile response timeout is 5s** (15s by default), so the timeout demo finishes quickly.
 - **Frontend types are still hand-written** (`src/api/types.ts`) and mirror the DTOs. Generating them from OpenAPI (§5.5) is moved to Stage 7, together with the Playwright suite.
 
+**Stage 4**
+- **The lease reaper** runs on every instance as a virtual-thread loop (`webhooks.worker.reaper-interval`, default 15s; `reaper-batch-size` 100). It shares `webhooks.worker.enabled`.
+  - It takes the next state from the same `RetryPolicy` as a normal attempt, using outcome `LEASE_EXPIRED`, which is retryable. A reaped retry therefore gets the usual backoff and jitter, not an immediate retry.
+  - If the endpoint was deleted, the delivery is `CANCELLED`.
+- **Late results** (migration V3, `delivery_attempts.reported_after_lease_expiry`):
+  - When a worker reports after its attempt was abandoned, the attempt keeps status `ABANDONED`.
+  - The worker's observed outcome, status and latency are still stored on it, with the flag set. The delivery is unchanged, because the lease token no longer matches.
+  - §7.2 asked for the late observation to be kept. The flag makes sure it can never be mistaken for an applied result.
+- **Startup validation:** `lease-duration` must be at least `connect-timeout + response-timeout + 5s`. This enforces §7.2's "must exceed the HTTP timeout by a wide margin".
+- **Local profile:** the lease is 15s and the reaper interval 2s, so `scripts/demo.sh crash` recovers within about 20s.
+- **Delivery detail** shows the current lease (`lease.owner`, `lease.expiresAt`) while a delivery is in flight.
+- **The crash test kills a real JVM.** It starts the platform as a child process with the test classpath, holds a request open at the receiver, sends SIGKILL, then recovers. This is closer to §13's `docker compose kill app` than simulating the database state.
+

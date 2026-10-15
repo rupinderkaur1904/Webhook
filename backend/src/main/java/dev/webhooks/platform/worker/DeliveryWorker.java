@@ -94,8 +94,13 @@ public class DeliveryWorker implements SmartLifecycle {
                 try {
                     processor.process(claim);
                 } catch (RuntimeException e) {
-                    // The lease expires and the delivery is recovered; never lose the error silently.
-                    log.error("Delivery {} attempt {} failed unexpectedly", claim.deliveryId(), claim.attemptNumber(), e);
+                    // The lease expires and the reaper recovers the delivery; never lose the error silently.
+                    if (!running) {
+                        log.warn("Delivery {} attempt {} was interrupted by shutdown before its result was recorded; "
+                                + "the lease reaper will retry it", claim.deliveryId(), claim.attemptNumber());
+                    } else {
+                        log.error("Delivery {} attempt {} failed unexpectedly", claim.deliveryId(), claim.attemptNumber(), e);
+                    }
                 } finally {
                     permits.release();
                 }

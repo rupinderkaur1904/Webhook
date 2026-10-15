@@ -11,8 +11,8 @@ The full design is in [docs/PLAN.md](docs/PLAN.md). This README describes what i
 | 1. End-to-end foundation | Schema, endpoints, idempotent ingestion, PostgreSQL queue + worker, signing, simulator, minimal dashboard | **Done** |
 | 2. Delivery reliability | Retry classification, exponential backoff with jitter, `Retry-After`, retry exhaustion | **Done** |
 | 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | **Done** |
-| 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | Next |
-| 5. Security hardening | Login sessions, API-key management, full SSRF test matrix, rate limits, request limits | Planned |
+| 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | **Done** |
+| 5. Security hardening | Login sessions, API-key management, full SSRF test matrix, rate limits, request limits | Next |
 | 6. Reliability and observability | Circuit breaker, endpoint health, metrics, structured logging | Planned |
 | 7. Final verification | E2E suite, deployment, complete documentation | Planned |
 
@@ -90,6 +90,24 @@ Signatures follow [Standard Webhooks](https://www.standardwebhooks.com/). The si
 - deduplicate on `webhook-id`.
 
 `receiver-simulator/src/main/java/dev/webhooks/simulator/SignatureVerifier.java` is a reference verifier.
+
+### Crash recovery
+
+A worker claims a delivery with a **lease**: a random `lease_token` and an expiry (`webhooks.worker.lease-duration`, 60s by default). It also writes a `STARTED` attempt row before it sends anything. The result is written only if the delivery still carries that token.
+
+Three situations stop a result from being recorded: the process crashes, hangs, or is still sending when graceful shutdown times out. In each case the lease expires and the **lease reaper** recovers the delivery. Every instance runs a reaper every `reaper-interval` (15s). It works through expired leases in batches of `reaper-batch-size` (100), using `SKIP LOCKED`, so several instances never recover the same row. For each expired lease the reaper:
+- marks the open attempt `ABANDONED` with outcome `LEASE_EXPIRED`;
+- moves the delivery to `RETRYING` with the normal backoff;
+- if that was the last attempt, dead-letters it with `RETRIES_EXHAUSTED`;
+- if the endpoint was deleted meanwhile, marks it `CANCELLED`.
+
+Abandoned attempts count against the budget. A payload that crashes the worker every time therefore dead-letters instead of looping.
+
+**Stale workers are fenced out.** A worker that was only paused, and reports after its lease was reaped, finds the token changed, so its result does not touch the delivery. What it saw is still stored on its attempt, which stays `ABANDONED` and is flagged `reportedAfterLeaseExpiry`. The history stays honest, and the dashboard marks that attempt "late result, not applied".
+
+**Graceful shutdown:** the worker stops claiming and waits up to `shutdown-timeout` (20s) for in-flight sends to finish and be recorded. Anything still running is left to the reaper after restart.
+
+The app refuses to start if `lease-duration` is not at least `connect-timeout + response-timeout + 5s`. A shorter lease would let a delivery be retried while its first request is still running.
 
 ### Dead letters and replay
 
@@ -216,7 +234,10 @@ scripts/demo.sh intermittent  # 50% seeded failures, 8 events -> every one retri
 scripts/demo.sh replay        # exhaust, fix the receiver, replay -> DELIVERED; a second replay -> 409 REPLAY_IN_PROGRESS
 scripts/demo.sh idempotency   # same key twice -> 200 replay; same key, different payload -> 409
 scripts/demo.sh signature     # verify a delivered request: VALID; tampered body or wrong secret: INVALID_SIGNATURE
+scripts/demo.sh crash         # kill -9 the backend mid-request, restart it -> attempt 1 ABANDONED / LEASE_EXPIRED, attempt 2 DELIVERED
 ```
+
+`crash` kills whatever is listening on the API port and restarts the jar, using the local profile's 15s lease and 2s reaper interval. Set `CRASH_CMD` and `START_CMD` to use something else, for example `docker compose kill app` and `docker compose start app`.
 
 The simulator's request log marks repeated `webhook-id`s as duplicates. This shows why receivers must deduplicate.
 
@@ -274,11 +295,20 @@ Integration tests always run against real PostgreSQL. They cover:
   - cross-account 404;
 - overview metrics against seeded deliveries inside and outside the window, plus delivery and event filters;
 - simulator scripts, seeded intermittent failures and the verify endpoint;
+- crash recovery:
+  - a **real crash**: the platform runs as a separate JVM, is killed with SIGKILL mid-request, and the delivery is recovered and delivered;
+  - abandoned attempts that count towards dead-lettering;
+  - deleting the endpoint during a crash;
+  - stale workers fenced out after recovery, with their late observation kept;
+  - 4 reapers recovering 250 expired leases exactly once;
+  - a crashed replay recovered within its own chain;
+  - graceful shutdown, both draining and past its deadline;
 - dashboard pages with Vitest and Testing Library: overview, deliveries, dead letters (including replay), delivery detail (replay chain, disabled replay with its reason, a rejected replay), events, and endpoint detail.
 
 ## Known limitations (current stage)
 
-- **No lease reaper yet** (Stage 4). If the process dies mid-attempt, that delivery stays `IN_FLIGHT`. Its lease and `STARTED` attempt row are already recorded, so the Stage 4 reaper will recover it.
+- **Crash recovery adds latency** of up to `lease-duration + reaper-interval` (75s with the defaults) for work that was in flight when a process died.
+- **A paused worker can duplicate a send.** If a worker pauses for longer than its lease (a long GC pause or a frozen VM), it can send at the same moment as the worker that reclaimed the delivery. Fencing keeps the database correct, but the receiver gets the request twice. This is inherent to at-least-once delivery, and why receivers deduplicate on `webhook-id`.
 - **API-key authentication only** (Stage 5). The dashboard keeps the key in `sessionStorage`. Stage 5 replaces this with HttpOnly session cookies.
 - **No ordering guarantee** between events.
 - **A dead letter stays replayable after a later replay of it succeeded.** Replaying it again sends the event once more. The delivery detail shows the whole chain, so the earlier success is visible before you click.

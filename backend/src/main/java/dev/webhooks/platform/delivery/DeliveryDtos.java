@@ -44,7 +44,8 @@ public final class DeliveryDtos {
             Integer retryAfterSeconds,
             Instant startedAt,
             Instant finishedAt,
-            Integer durationMs) {}
+            Integer durationMs,
+            boolean reportedAfterLeaseExpiry) {}
 
     /**
      * Whether the delivery can be replayed now. {@code reason} is one of
@@ -56,9 +57,16 @@ public final class DeliveryDtos {
      * {@code chain} lists every delivery of this event to this endpoint, oldest first: the original
      * and each replay, including this one.
      */
+    /** The worker currently holding an in-flight delivery, and when its lease runs out. */
+    public record Lease(String owner, Instant expiresAt) {}
+
+    /**
+     * {@code lease} is set only while the delivery is in flight.
+     */
     public record DeliveryDetail(
             DeliverySummary delivery,
             String endpointUrl,
+            Lease lease,
             JsonNode eventBody,
             List<AttemptView> attempts,
             ReplayEligibility replayEligibility,

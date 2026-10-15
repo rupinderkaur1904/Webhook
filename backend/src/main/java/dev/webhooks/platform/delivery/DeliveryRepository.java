@@ -107,15 +107,22 @@ public class DeliveryRepository {
         return result;
     }
 
-    /** Finishes the attempt row with what the worker observed. Always applied, even for a stale lease. */
+    /**
+     * Finishes the attempt row with what the worker observed. Always applied, even for a stale lease:
+     * if the reaper already marked the attempt {@code ABANDONED}, the observation is still stored but
+     * the row stays abandoned and is flagged {@code reported_after_lease_expiry}, because the delivery
+     * has moved on and this result was not applied to it.
+     */
     public void finishAttempt(UUID attemptId, String status, AttemptRecord record) {
         jdbc.sql("""
                         UPDATE delivery_attempts
-                        SET status = :status, outcome = :outcome, retryable = :retryable,
+                        SET status = CASE WHEN status = 'ABANDONED' THEN 'ABANDONED' ELSE :status END,
+                            reported_after_lease_expiry = (status = 'ABANDONED'),
+                            outcome = :outcome, retryable = :retryable,
                             response_status = :responseStatus, response_headers = CAST(:headers AS jsonb),
                             response_body_excerpt = :body, error_message = :error,
                             retry_after_seconds = :retryAfter, finished_at = now(), duration_ms = :duration
-                        WHERE id = :id AND status = 'STARTED'
+                        WHERE id = :id AND (status = 'STARTED' OR (status = 'ABANDONED' AND NOT reported_after_lease_expiry))
                         """)
                 .param("id", attemptId)
                 .param("status", status)
@@ -128,6 +135,77 @@ public class DeliveryRepository {
                 .param("retryAfter", record.retryAfterSeconds())
                 .param("duration", record.durationMs())
                 .update();
+    }
+
+    /** An in-flight delivery whose lease has expired, locked for recovery. */
+    public record ExpiredLease(UUID deliveryId, UUID leaseToken, String leaseOwner, int attemptCount, int maxAttempts,
+            boolean endpointDeleted) {}
+
+    /**
+     * Locks up to {@code limit} in-flight deliveries whose lease has expired. Must run inside a
+     * transaction; {@code SKIP LOCKED} lets several reapers (one per instance) share the work, and
+     * rows a worker is finishing right now are skipped until its result transaction commits.
+     */
+    public List<ExpiredLease> lockExpiredLeases(int limit) {
+        return jdbc.sql("""
+                        SELECT d.id, d.lease_token, d.lease_owner, d.attempt_count, d.max_attempts,
+                               e.deleted_at IS NOT NULL AS endpoint_deleted
+                        FROM deliveries d
+                        JOIN endpoints e ON e.id = d.endpoint_id
+                        WHERE d.status = 'IN_FLIGHT' AND d.lease_expires_at < now()
+                        ORDER BY d.lease_expires_at
+                        LIMIT :limit
+                        FOR UPDATE OF d SKIP LOCKED
+                        """)
+                .param("limit", limit)
+                .query((rs, n) -> new ExpiredLease(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("lease_token", UUID.class),
+                        rs.getString("lease_owner"),
+                        rs.getInt("attempt_count"),
+                        rs.getInt("max_attempts"),
+                        rs.getBoolean("endpoint_deleted")))
+                .list();
+    }
+
+    /** Marks the open attempt of an expired lease as abandoned. */
+    public void abandonAttempt(ExpiredLease lease, String message) {
+        jdbc.sql("""
+                        UPDATE delivery_attempts
+                        SET status = 'ABANDONED', outcome = 'LEASE_EXPIRED', retryable = true, error_message = :message,
+                            finished_at = now(),
+                            duration_ms = LEAST(extract(epoch FROM now() - started_at) * 1000, 2147483647)::int
+                        WHERE delivery_id = :id AND attempt_number = :number AND status = 'STARTED'
+                        """)
+                .param("id", lease.deliveryId())
+                .param("number", lease.attemptCount())
+                .param("message", message)
+                .update();
+    }
+
+    /**
+     * Moves a delivery out of an expired lease: {@code RETRYING} after {@code delay},
+     * {@code DEAD_LETTERED} when {@code delay} is null, or {@code CANCELLED} if its endpoint was deleted.
+     * Guarded by the lease token like every other transition.
+     */
+    public boolean releaseExpiredLease(ExpiredLease lease, Duration delay, String error) {
+        String status = lease.endpointDeleted() ? "CANCELLED" : delay == null ? "DEAD_LETTERED" : "RETRYING";
+        return jdbc.sql("""
+                        UPDATE deliveries
+                        SET status = :status,
+                            next_attempt_at = CASE WHEN :status = 'RETRYING' THEN now() + make_interval(secs => :delaySeconds) END,
+                            dead_letter_reason = CASE WHEN :status = 'DEAD_LETTERED' THEN 'RETRIES_EXHAUSTED' END,
+                            dead_lettered_at = CASE WHEN :status = 'DEAD_LETTERED' THEN now() END,
+                            last_response_status = NULL, last_error = :error,
+                            lease_token = NULL, lease_owner = NULL, lease_expires_at = NULL, updated_at = now()
+                        WHERE id = :id AND status = 'IN_FLIGHT' AND lease_token = :token
+                        """)
+                .param("status", status)
+                .param("delaySeconds", delay == null ? 0.0 : delay.toMillis() / 1000.0)
+                .param("error", error)
+                .param("id", lease.deliveryId())
+                .param("token", lease.leaseToken())
+                .update() == 1;
     }
 
     public boolean markDelivered(ClaimedDelivery claim, Integer responseStatus) {
@@ -165,7 +243,7 @@ public class DeliveryRepository {
      * Schedules the next attempt. If the endpoint was deleted while the attempt was in flight the
      * delivery is cancelled instead, so no further attempts are made to a removed endpoint.
      */
-    public boolean markRetrying(ClaimedDelivery claim, java.time.Duration delay, Integer responseStatus, String error) {
+    public boolean markRetrying(ClaimedDelivery claim, Duration delay, Integer responseStatus, String error) {
         return jdbc.sql("""
                         UPDATE deliveries d
                         SET status = CASE WHEN e.deleted_at IS NULL THEN 'RETRYING' ELSE 'CANCELLED' END,

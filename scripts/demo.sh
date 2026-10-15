@@ -17,6 +17,9 @@
 #   replay        exhaust, fix the receiver, replay the dead letter; a second replay is refused
 #   idempotency   same Idempotency-Key twice (200 replay), then with a different payload (409)
 #   signature     check a delivered request's signature, then the same request with a tampered body
+#   crash         kill -9 the backend while it is sending, restart it: the lease expires, the reaper
+#                 marks the attempt ABANDONED and the delivery is retried and delivered
+#                 (override CRASH_CMD / START_CMD, e.g. "docker compose kill app" / "docker compose start app")
 set -euo pipefail
 
 API="${API_URL:-http://localhost:8080}"
@@ -90,6 +93,7 @@ case "$SCENARIO" in
   exhaust|replay) receiver '{"status":503}' ;;
   permanent)    receiver '{"status":400}' ;;
   intermittent) receiver '{"status":200,"failureRate":0.5,"failureStatus":503,"seed":7}' ;;
+  crash)        receiver '{"status":200,"script":[{"status":200,"delayMs":4000}]}' ;;
   *) echo "unknown scenario: $SCENARIO" >&2; exit 2 ;;
 esac
 
@@ -111,6 +115,33 @@ if [[ "$SCENARIO" == "intermittent" ]]; then
   curl -sf "$SIM/receivers/$RECEIVER/requests" |
     jq -c '{requests: length, answered: (group_by(.respondedWith) | map({key: (.[0].respondedWith|tostring), value: length}) | from_entries),
             retriesSeenAsDuplicateWebhookIds: (map(select(.duplicate)) | length)}'
+  exit 0
+fi
+
+if [[ "$SCENARIO" == "crash" ]]; then
+  ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+  backend_pid() {  # the process listening on the API port, or the backend jar if ss is unavailable
+    { ss -ltnpH "sport = :${API##*:}" 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2; pgrep -f 'webhook-platform-.*\.jar'; } | head -1
+  }
+  CRASH_CMD="${CRASH_CMD:-kill -9 \$(backend_pid)}"
+  START_CMD="${START_CMD:-SPRING_PROFILES_ACTIVE=local nohup java -jar $ROOT/backend/target/webhook-platform-0.1.0-SNAPSHOT.jar > ${TMPDIR:-/tmp}/webhook-backend.log 2>&1 &}"
+  step "Submit event (the receiver holds the first request for 4s)"
+  submit_one
+  wait_until '.delivery.status == "IN_FLIGHT"' 15
+  until curl -sf "$SIM/receivers/$RECEIVER/requests" | jq -e 'length >= 1' >/dev/null; do sleep 0.2; done
+  delivery | jq -c '{status: .delivery.status, lease: .lease, attempt: .attempts[0].status}'
+  step "Crash the backend mid-request: $CRASH_CMD"
+  eval "$CRASH_CMD"
+  sleep 1
+  step "Restart it: $START_CMD"
+  eval "$START_CMD"
+  until curl -sf "$API/actuator/health" >/dev/null; do sleep 0.5; done
+  echo "backend is up again; the delivery is still IN_FLIGHT until its lease (15s in the local profile) expires"
+  delivery | jq -c '{status: .delivery.status, lease: .lease}'
+  step "Wait for the reaper to recover it and a worker to deliver it"
+  wait_until '.delivery.status == "DELIVERED"' 60
+  show
+  show_receiver
   exit 0
 fi
 

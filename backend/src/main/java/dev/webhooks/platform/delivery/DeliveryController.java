@@ -69,7 +69,7 @@ public class DeliveryController {
         UUID account = principal.accountId();
         var found = deliveries.find(account, id).orElseThrow(() -> ApiException.notFound("Delivery"));
         DeliverySummary summary = found.summary();
-        return new DeliveryDetail(summary, found.endpointUrl(),
+        return new DeliveryDetail(summary, found.endpointUrl(), found.lease(),
                 objectMapper.readTree(deliveries.eventBody(summary.eventId())),
                 deliveries.attempts(id),
                 replays.eligibility(account, id).orElseThrow(() -> ApiException.notFound("Delivery")),
