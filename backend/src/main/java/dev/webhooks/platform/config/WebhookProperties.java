@@ -161,6 +161,7 @@ public record WebhookProperties(
      * Reverse proxies whose {@code X-Forwarded-For} and {@code X-Forwarded-Proto} headers are believed.
      * Each entry is a CIDR range or a single address. Empty (the default) means no proxy is trusted
      * and forwarding headers are ignored entirely; the client address is the TCP peer.
+     * {@code diagnostics} logs each request's peer and forwarding headers ({@link ProxyDiagnosticsFilter}).
      */
-    public record Proxy(@DefaultValue List<String> trustedProxies) {}
+    public record Proxy(@DefaultValue List<String> trustedProxies, @DefaultValue("false") boolean diagnostics) {}
 }

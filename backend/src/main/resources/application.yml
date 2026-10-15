@@ -83,6 +83,8 @@ webhooks:
   # forwarding headers.
   proxy:
     trusted-proxies: ${TRUSTED_PROXIES:}
+    # Logs each request's TCP peer and forwarding headers (first deployment only).
+    diagnostics: ${PROXY_DIAGNOSTICS:false}
   # Per-endpoint circuit breaker (README "Circuit breaker and endpoint health").
   circuit:
     failure-threshold: ${CIRCUIT_FAILURE_THRESHOLD:10}
