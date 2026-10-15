@@ -9,6 +9,7 @@ import dev.webhooks.platform.auth.CsrfCookieFilter;
 import dev.webhooks.platform.auth.MetricsTokenFilter;
 import dev.webhooks.platform.auth.ProblemAccessDeniedHandler;
 import dev.webhooks.platform.auth.ProblemAuthenticationEntryPoint;
+import dev.webhooks.platform.web.DashboardController;
 import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -93,6 +94,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/events").hasAnyAuthority(ROLE_USER, ROLE_API_CLIENT)
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyAuthority(ROLE_USER, ROLE_API_CLIENT)
                         .requestMatchers("/api/**").hasAuthority(ROLE_USER)
+                        // The dashboard's static files and client-side routes; its data needs a session.
+                        .requestMatchers(HttpMethod.GET, DashboardController.ROUTES).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/index.html", "/assets/**", "/favicon.svg").permitAll()
                         .anyRequest().denyAll());
         return http.build();
     }
