@@ -12,5 +12,7 @@ public enum AttemptOutcome {
     DNS_ERROR,
     TLS_ERROR,
     DESTINATION_BLOCKED,
-    INVALID_RESPONSE
+    INVALID_RESPONSE,
+    /** No result was recorded before the worker's lease expired (crash, hang, or shutdown timeout). */
+    LEASE_EXPIRED
 }

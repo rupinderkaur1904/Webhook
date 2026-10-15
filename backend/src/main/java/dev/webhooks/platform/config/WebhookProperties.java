@@ -19,6 +19,18 @@ public record WebhookProperties(
         @DefaultValue Ssrf ssrf,
         @DefaultValue Replay replay) {
 
+    public WebhookProperties {
+        if (worker != null && delivery != null) {
+            Duration slowestAttempt = delivery.connectTimeout().plus(delivery.responseTimeout());
+            if (worker.leaseDuration().compareTo(slowestAttempt.plusSeconds(5)) < 0) {
+                // A lease shorter than the slowest possible attempt would let the reaper retry a delivery
+                // whose request is still running, causing avoidable duplicate sends.
+                throw new IllegalArgumentException("webhooks.worker.lease-duration (" + worker.leaseDuration()
+                        + ") must exceed connect-timeout + response-timeout by at least 5s (" + slowestAttempt + ")");
+            }
+        }
+    }
+
     /** Optional account and API key created at startup, for local use before sign-up exists. */
     public record Bootstrap(String email, String password, String apiKey) {}
 
@@ -31,7 +43,9 @@ public record WebhookProperties(
             @DefaultValue("32") int batchSize,
             @DefaultValue("32") int maxConcurrency,
             @DefaultValue("60s") Duration leaseDuration,
-            @DefaultValue("20s") Duration shutdownTimeout) {}
+            @DefaultValue("20s") Duration shutdownTimeout,
+            @DefaultValue("15s") Duration reaperInterval,
+            @DefaultValue("100") int reaperBatchSize) {}
 
     public record Delivery(
             @DefaultValue("5s") Duration connectTimeout,

@@ -9,14 +9,31 @@ import { ReplayButton } from '../components/ReplayButton';
 import { StatusBadge } from '../components/StatusBadge';
 import { Time } from '../components/Time';
 
+const ATTEMPT_COLORS: Record<Attempt['status'], string> = {
+  SUCCEEDED: 'green',
+  STARTED: 'blue',
+  FAILED: 'red',
+  ABANDONED: 'orange',
+};
+
 function AttemptItem({ attempt }: { attempt: Attempt }) {
   return (
     <Stack gap={4}>
       <Group gap="xs">
         <Text fw={500}>Attempt {attempt.attemptNumber}</Text>
-        <Badge color={attempt.status === 'SUCCEEDED' ? 'green' : attempt.status === 'STARTED' ? 'blue' : 'red'} variant="light">
-          {attempt.outcome ?? attempt.status}
+        <Badge color={ATTEMPT_COLORS[attempt.status]} variant="light">
+          {attempt.status === 'STARTED' ? 'IN PROGRESS' : attempt.outcome ?? attempt.status}
         </Badge>
+        {attempt.status === 'ABANDONED' && (
+          <Badge color="orange" variant="outline">
+            abandoned
+          </Badge>
+        )}
+        {attempt.reportedAfterLeaseExpiry && (
+          <Badge color="gray" variant="outline">
+            late result, not applied
+          </Badge>
+        )}
         {attempt.responseStatus != null && <Badge variant="outline">HTTP {attempt.responseStatus}</Badge>}
         {attempt.retryable != null && (
           <Badge color={attempt.retryable ? 'yellow' : 'gray'} variant="dot">
@@ -35,6 +52,12 @@ function AttemptItem({ attempt }: { attempt: Attempt }) {
       {attempt.retryAfterSeconds != null && (
         <Text size="xs" c="dimmed">
           Receiver asked to retry after {attempt.retryAfterSeconds}s (Retry-After)
+        </Text>
+      )}
+      {attempt.reportedAfterLeaseExpiry && (
+        <Text size="xs" c="dimmed">
+          The worker's lease expired before it reported, so this attempt was abandoned and the delivery moved on. The
+          worker later reported what it saw; it is shown here but did not change the delivery.
         </Text>
       )}
       {attempt.errorMessage && (
@@ -148,6 +171,11 @@ export function DeliveryDetailPage() {
                 <Field label="Created">
                   <Time value={detail.delivery.createdAt} />
                 </Field>
+                {detail.lease && (
+                  <Field label="In flight on">
+                    {detail.lease.owner} · lease until <Time value={detail.lease.expiresAt} />
+                  </Field>
+                )}
                 {detail.delivery.status === 'RETRYING' && (
                   <Field label="Next attempt">
                     <Time value={detail.delivery.nextAttemptAt} />
@@ -173,7 +201,7 @@ export function DeliveryDetailPage() {
             ) : (
               <Timeline bulletSize={14} lineWidth={2}>
                 {detail.attempts.map((a) => (
-                  <Timeline.Item key={a.id} color={a.status === 'SUCCEEDED' ? 'green' : a.status === 'STARTED' ? 'blue' : 'red'}>
+                  <Timeline.Item key={a.id} color={ATTEMPT_COLORS[a.status]}>
                     <AttemptItem attempt={a} />
                   </Timeline.Item>
                 ))}

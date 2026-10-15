@@ -69,6 +69,8 @@ export interface Attempt {
   startedAt: string;
   finishedAt: string | null;
   durationMs: number | null;
+  /** The worker reported after its lease had expired; shown for honesty, not applied to the delivery. */
+  reportedAfterLeaseExpiry: boolean;
 }
 
 export type ReplayIneligibleReason =
@@ -88,6 +90,8 @@ export interface ReplayEligibility {
 export interface DeliveryDetail {
   delivery: DeliverySummary;
   endpointUrl: string;
+  /** Set only while the delivery is in flight. */
+  lease: { owner: string; expiresAt: string } | null;
   eventBody: unknown;
   attempts: Attempt[];
   replayEligibility: ReplayEligibility;

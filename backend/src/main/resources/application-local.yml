@@ -15,6 +15,11 @@ webhooks:
   # A short response timeout so the timeout scenario does not take long to watch.
   delivery:
     response-timeout: 5s
+  # Short lease and frequent reaping so the crash demo recovers within seconds. The lease must exceed
+  # connect-timeout (5s) + response-timeout (5s) + 5s.
+  worker:
+    lease-duration: 15s
+    reaper-interval: 2s
   # Short delays so retries and exhaustion can be watched live in a demo.
   retry:
     max-attempts: 4

@@ -51,6 +51,7 @@ export const delivered: DeliverySummary = {
 export const deliveredDetail: DeliveryDetail = {
   delivery: delivered,
   endpointUrl: 'https://billing.example.com/hooks',
+  lease: null,
   eventBody: { id: 'e1e1e1e1', type: 'payment.succeeded', data: { amount: 100 } },
   attempts: [
     {
@@ -68,6 +69,7 @@ export const deliveredDetail: DeliveryDetail = {
       startedAt: '2026-10-15T04:00:00Z',
       finishedAt: '2026-10-15T04:00:01Z',
       durationMs: 42,
+      reportedAfterLeaseExpiry: false,
     },
   ],
   replayEligibility: { eligible: false, reason: 'NOT_DEAD_LETTERED', replayCount: 0, maxReplays: 10 },

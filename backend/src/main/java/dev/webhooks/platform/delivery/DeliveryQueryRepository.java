@@ -110,7 +110,9 @@ public class DeliveryQueryRepository {
         return jdbc.sql(SUMMARY_SELECT + " WHERE d.account_id = :account AND d.id = :id")
                 .param("account", accountId)
                 .param("id", id)
-                .query((rs, n) -> new SummaryWithContext(mapSummary(rs, n), rs.getString("endpoint_url")))
+                .query((rs, n) -> new SummaryWithContext(mapSummary(rs, n), rs.getString("endpoint_url"),
+                        rs.getString("lease_owner") == null ? null
+                                : new DeliveryDtos.Lease(rs.getString("lease_owner"), instant(rs, "lease_expires_at"))))
                 .optional();
     }
 
@@ -135,7 +137,8 @@ public class DeliveryQueryRepository {
                         integer(rs, "retry_after_seconds"),
                         instant(rs, "started_at"),
                         instant(rs, "finished_at"),
-                        integer(rs, "duration_ms")))
+                        integer(rs, "duration_ms"),
+                        rs.getBoolean("reported_after_lease_expiry")))
                 .list();
     }
 
@@ -146,7 +149,7 @@ public class DeliveryQueryRepository {
         return objectMapper.readValue(json, new TypeReference<Map<String, String>>() {});
     }
 
-    public record SummaryWithContext(DeliverySummary summary, String endpointUrl) {}
+    public record SummaryWithContext(DeliverySummary summary, String endpointUrl, DeliveryDtos.Lease lease) {}
 
     static DeliverySummary mapSummary(ResultSet rs, int row) throws SQLException {
         String reason = rs.getString("dead_letter_reason");

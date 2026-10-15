@@ -109,3 +109,39 @@ describe('DeliveryDetailPage replay', () => {
     expect(screen.getByText('A delivery for this event and endpoint is already in progress')).toBeInTheDocument();
   });
 });
+
+describe('DeliveryDetailPage recovery', () => {
+  it('shows the worker holding an in-flight delivery', async () => {
+    mockApi({
+      '/api/v1/deliveries/d1': {
+        ...detail,
+        delivery: { ...detail.delivery, status: 'IN_FLIGHT', deliveredAt: null },
+        lease: { owner: 'host-a/1234abcd', expiresAt: '2026-10-15T04:01:00Z' },
+        attempts: [{ ...detail.attempts[0], status: 'STARTED', outcome: null, responseStatus: null, finishedAt: null, durationMs: null, responseBodyExcerpt: null }],
+      },
+    });
+    renderAt('/deliveries/d1', '/deliveries/:id', <DeliveryDetailPage />);
+    expect(await screen.findByText(/host-a\/1234abcd/)).toBeInTheDocument();
+    expect(screen.getByText('IN PROGRESS')).toBeInTheDocument();
+  });
+
+  it('marks abandoned attempts and late results that were not applied', async () => {
+    mockApi({
+      '/api/v1/deliveries/d1': {
+        ...detail,
+        attempts: [
+          {
+            ...detail.attempts[0],
+            status: 'ABANDONED',
+            outcome: 'SUCCESS',
+            reportedAfterLeaseExpiry: true,
+          },
+          { ...detail.attempts[0], id: 'a2', attemptNumber: 2 },
+        ],
+      },
+    });
+    renderAt('/deliveries/d1', '/deliveries/:id', <DeliveryDetailPage />);
+    expect(await screen.findByText('abandoned')).toBeInTheDocument();
+    expect(screen.getByText('late result, not applied')).toBeInTheDocument();
+  });
+});
