@@ -5,6 +5,8 @@ import dev.webhooks.platform.endpoint.EndpointDtos.CreateEndpointRequest;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointCreatedResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointListResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointResponse;
+import dev.webhooks.platform.endpoint.EndpointDtos.RotateSecretRequest;
+import dev.webhooks.platform.endpoint.EndpointDtos.RotateSecretResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.UpdateEndpointRequest;
 import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
 import dev.webhooks.platform.event.IngestionService;
@@ -60,6 +62,12 @@ public class EndpointController {
     ResponseEntity<Void> delete(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id) {
         endpoints.delete(principal.accountId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/{id}/rotate-secret")
+    RotateSecretResponse rotateSecret(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id,
+            @Valid @RequestBody(required = false) RotateSecretRequest request) {
+        return endpoints.rotateSecret(principal.accountId(), id, request);
     }
 
     /** Sends a real {@code webhook.test} event through the normal delivery pipeline to this endpoint. */

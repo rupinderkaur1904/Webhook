@@ -1,9 +1,17 @@
 package dev.webhooks.platform.support;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+
+import dev.webhooks.platform.auth.AccountPrincipal;
 import dev.webhooks.platform.crypto.Tokens;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.stereotype.Component;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 
 /** Creates isolated accounts so tests never depend on each other's data. */
 @Component
@@ -18,6 +26,13 @@ public class TestData {
     public record Account(UUID id, String apiKey) {
         public String bearer() {
             return "Bearer " + apiKey;
+        }
+
+        /** A logged-in dashboard session for this account, with a valid CSRF token. */
+        public RequestPostProcessor session() {
+            var auth = UsernamePasswordAuthenticationToken.authenticated(AccountPrincipal.forSession(id), null,
+                    List.of(new SimpleGrantedAuthority(AccountPrincipal.ROLE_USER)));
+            return request -> csrf().postProcessRequest(authentication(auth).postProcessRequest(request));
         }
     }
 

@@ -20,18 +20,41 @@
 #   crash         kill -9 the backend while it is sending, restart it: the lease expires, the reaper
 #                 marks the attempt ABANDONED and the delivery is retried and delivered
 #                 (override CRASH_CMD / START_CMD, e.g. "docker compose kill app" / "docker compose start app")
+#   rotation      rotate the signing secret with a grace period: deliveries carry both signatures and
+#                 the receiver accepts either secret
+#   security      anonymous 401, API key 403 on management, missing CSRF 403, oversized body 413,
+#                 then repeated bad logins 429 (this throttles logins from this address for a minute)
+#
+# Management calls (endpoints, replay, rotation) use a dashboard session: the script signs in with the
+# local bootstrap account (cookie jar + CSRF token). Event submission uses the API key, as a producer would.
 set -euo pipefail
 
 API="${API_URL:-http://localhost:8080}"
 SIM="${SIMULATOR_URL:-http://localhost:9090}"
 SIM_FROM_API="${SIMULATOR_URL_FROM_API:-http://localhost:9090}"   # how the backend reaches the simulator
 KEY="${API_KEY:-whk_local_dev_key_0000000000000000000000}"
+EMAIL="${DASHBOARD_EMAIL:-dev@localhost}"
+PASSWORD="${DASHBOARD_PASSWORD:-local-dev-password}"
 SCENARIO="${1:-success}"
 RUN="$(date +%s)-$RANDOM"
 RECEIVER="demo-$SCENARIO-$RUN"
 
 auth=(-H "Authorization: Bearer $KEY")
 json=(-H "Content-Type: application/json")
+# The session is kept between runs (logins are rate limited to 5 a minute, like for any client).
+JAR="${DEMO_COOKIE_JAR:-${TMPDIR:-/tmp}/webhook-demo-cookies.txt}"
+
+xsrf() { awk '$6 == "XSRF-TOKEN" {print $7}' "$JAR" | tail -n1; }
+sign_in() {
+  if [[ -s "$JAR" ]] && curl -sf -b "$JAR" -c "$JAR" "$API/api/v1/auth/me" >/dev/null; then
+    return 0  # the stored session is still valid
+  fi
+  curl -sf -c "$JAR" "$API/api/v1/auth/csrf" >/dev/null
+  curl -sf -b "$JAR" -c "$JAR" "${json[@]}" -H "X-XSRF-TOKEN: $(xsrf)" -X POST "$API/api/v1/auth/login" \
+    -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" >/dev/null
+}
+# manage <curl args...>: a dashboard-session request with the current CSRF token
+manage() { curl -b "$JAR" -c "$JAR" -H "X-XSRF-TOKEN: $(xsrf)" "$@"; }
 step() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 
@@ -78,15 +101,19 @@ submit_one() {  # submits an event and sets DELIVERY
   echo "delivery $DELIVERY"
 }
 
+step "Sign in as $EMAIL (dashboard session for endpoint management)"
+sign_in
+echo "session cookie stored; CSRF token $(xsrf | cut -c1-8)..."
+
 step "Register endpoint for simulator receiver '$RECEIVER'"
-created=$(curl -sf "${auth[@]}" "${json[@]}" -X POST "$API/api/v1/endpoints" \
+created=$(manage -sf "${json[@]}" -X POST "$API/api/v1/endpoints" \
   -d "{\"name\":\"$RECEIVER\",\"url\":\"$SIM_FROM_API/receivers/$RECEIVER\"}")
 ENDPOINT=$(jq -r .endpoint.id <<<"$created")
 SECRET=$(jq -r .secret <<<"$created")
 echo "endpoint $ENDPOINT (signing secret ${SECRET:0:12}..., shown once; simulator verifies with it)"
 
 case "$SCENARIO" in
-  success|idempotency|signature) receiver '{"status":200}' ;;
+  success|idempotency|signature|rotation|security) receiver '{"status":200}' ;;
   recover)      receiver '{"status":200,"script":[{"status":500},{"status":500}]}' ;;
   rate-limit)   receiver '{"status":200,"script":[{"status":429,"headers":{"Retry-After":"5"}}]}' ;;
   timeout)      receiver '{"status":200,"script":[{"status":200,"delayMs":8000}]}' ;;
@@ -145,6 +172,55 @@ if [[ "$SCENARIO" == "crash" ]]; then
   exit 0
 fi
 
+if [[ "$SCENARIO" == "security" ]]; then
+  code() { jq -r '"HTTP \(.status) \(.code)"' 2>/dev/null || echo "(no JSON body)"; }
+  step "No credentials: GET /api/v1/endpoints"
+  curl -s "$API/api/v1/endpoints" | code
+  step "API key on a management route: POST /api/v1/endpoints"
+  curl -s "${auth[@]}" "${json[@]}" -X POST "$API/api/v1/endpoints" -d '{"name":"x","url":"http://localhost:9090/x"}' | code
+  step "Dashboard session without the CSRF header: POST /api/v1/api-keys"
+  curl -s -b "$JAR" "${json[@]}" -X POST "$API/api/v1/api-keys" -d '{"name":"x"}' | code
+  step "Body over 256 KB: POST /api/v1/events"
+  head -c 300000 /dev/zero | tr '\0' 'a' | jq -Rs '{eventType: "big.event", payload: {blob: .}}' |
+    curl -s "${auth[@]}" "${json[@]}" -H "Idempotency-Key: big-$RUN" -X POST "$API/api/v1/events" -d @- | code
+  step "Response headers on an API call"
+  curl -s -D - -o /dev/null "${auth[@]}" "$API/api/v1/endpoints" |
+    grep -iE '^(content-security-policy|x-frame-options|x-content-type-options|referrer-policy|x-request-id):'
+  step "Repeated bad logins (5 per minute per address and per email)"
+  for i in 1 2 3 4 5 6; do
+    curl -s -b "$JAR" -c "$JAR" -D "$JAR.h" "${json[@]}" -H "X-XSRF-TOKEN: $(xsrf)" -X POST "$API/api/v1/auth/login" \
+      -d "{\"email\":\"attacker-$RUN@example.com\",\"password\":\"guess-$i\"}" | code | tr -d '\n'
+    echo " $(grep -i '^retry-after' "$JAR.h" | tr -d '\r' || true)"
+  done
+  rm -f "$JAR.h"
+  exit 0
+fi
+
+if [[ "$SCENARIO" == "rotation" ]]; then
+  step "Rotate the signing secret with a 24h grace period (the receiver still has the old one)"
+  rotated=$(manage -sf "${json[@]}" -X POST "$API/api/v1/endpoints/$ENDPOINT/rotate-secret" -d '{"gracePeriodHours":24}')
+  NEW_SECRET=$(jq -r .secret <<<"$rotated")
+  echo "new secret ${NEW_SECRET:0:12}..., old secret keeps signing until $(jq -r .previousSecretExpiresAt <<<"$rotated")"
+  step "Submit event"
+  submit_one
+  wait_until '.delivery.status == "DELIVERED"' 15
+  show
+  request=$(curl -sf "$SIM/receivers/$RECEIVER/requests" | jq '.[-1]')
+  step "webhook-signature carries one signature per secret"
+  jq -r '.headers["webhook-signature"] | split(" ") | .[]' <<<"$request"
+  for label in old new; do
+    secret=$SECRET; [[ $label == new ]] && secret=$NEW_SECRET
+    printf '%s secret: ' "$label"
+    jq -n --arg secret "$secret" --argjson r "$request" \
+      '{secret: $secret, webhookId: $r.headers["webhook-id"], webhookTimestamp: $r.headers["webhook-timestamp"],
+        webhookSignature: $r.headers["webhook-signature"], body: $r.body}' |
+      curl -sf "${json[@]}" -X POST "$SIM/verify" -d @- | jq -r .result
+  done
+  step "Endpoint as the API shows it (no secret, only prefixes and the grace deadline)"
+  manage -sf "$API/api/v1/endpoints/$ENDPOINT" | jq -c '{secretPrefix, previousSecretExpiresAt}'
+  exit 0
+fi
+
 step "Submit event"
 submit_one
 
@@ -177,11 +253,11 @@ if [[ "$SCENARIO" == "replay" ]]; then
   delivery | jq -c '.replayEligibility'
   step "Fix the receiver, then replay"
   receiver '{"status":200}'
-  replayed=$(curl -s -w '\n%{http_code}' "${auth[@]}" -X POST "$API/api/v1/deliveries/$ORIGINAL/replay")
+  replayed=$(manage -s -w '\n%{http_code}' -X POST "$API/api/v1/deliveries/$ORIGINAL/replay")
   echo "HTTP $(tail -n1 <<<"$replayed") $(sed '$d' <<<"$replayed" | jq -c '{id, status, replayOfDeliveryId, maxAttempts}')"
   DELIVERY=$(sed '$d' <<<"$replayed" | jq -r .id)
   step "Second replay while the first is in progress"
-  second=$(curl -s -w '\n%{http_code}' "${auth[@]}" -X POST "$API/api/v1/deliveries/$ORIGINAL/replay")
+  second=$(manage -s -w '\n%{http_code}' -X POST "$API/api/v1/deliveries/$ORIGINAL/replay")
   echo "HTTP $(tail -n1 <<<"$second") $(sed '$d' <<<"$second" | jq -c '{code, reason, detail}')"
   wait_until '.delivery.status == "DELIVERED"' 15
   show "$DELIVERY"

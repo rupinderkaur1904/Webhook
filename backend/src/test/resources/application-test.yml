@@ -14,6 +14,11 @@ webhooks:
     max-retry-after: 300s
   replay:
     max-per-delivery: 2
+  rate-limit:
+    # High enough that ordinary tests never trip it; RateLimitTest builds its own limiter.
+    login-per-minute: 1000
+    ingest-per-second: 1000
+    ingest-burst: 1000
   ssrf:
     # Host-only entry: the in-process test receiver listens on a random port.
     allowed-hosts:

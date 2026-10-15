@@ -1,5 +1,8 @@
 # Local development profile (SPRING_PROFILES_ACTIVE=local). Never use these values in production.
 webhooks:
+  auth:
+    # The local dev server is plain HTTP.
+    session-cookie-secure: false
   bootstrap:
     email: dev@localhost
     password: local-dev-password

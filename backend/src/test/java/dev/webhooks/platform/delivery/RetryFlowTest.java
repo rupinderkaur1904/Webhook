@@ -52,7 +52,7 @@ class RetryFlowTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"retry\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
@@ -205,7 +205,7 @@ class RetryFlowTest {
         receiver.respondWith(r -> Response.status(500));
         UUID id = submit("deleted");
         List<ClaimedDelivery> claimed = deliveries.claimDue(10, "w", Duration.ofSeconds(60));
-        mvc.perform(delete("/api/v1/endpoints/" + endpointId).header("Authorization", account.bearer()))
+        mvc.perform(delete("/api/v1/endpoints/" + endpointId).with(account.session()))
                 .andExpect(status().isNoContent());
         processor.process(claimed.getFirst());
 

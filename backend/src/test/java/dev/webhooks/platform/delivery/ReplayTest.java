@@ -56,7 +56,7 @@ class ReplayTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"replay\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
@@ -95,7 +95,7 @@ class ReplayTest {
     }
 
     ResultActions replay(UUID deliveryId, Account who) throws Exception {
-        return mvc.perform(post("/api/v1/deliveries/" + deliveryId + "/replay").header("Authorization", who.bearer()));
+        return mvc.perform(post("/api/v1/deliveries/" + deliveryId + "/replay").with(who.session()));
     }
 
     UUID replayOk(UUID deliveryId) throws Exception {
@@ -221,12 +221,12 @@ class ReplayTest {
     @Test
     void disabledOrDeletedEndpointCannotBeReplayedTo() throws Exception {
         UUID original = deadLetter("endpoint-state");
-        mvc.perform(patch("/api/v1/endpoints/" + endpointId).header("Authorization", account.bearer())
+        mvc.perform(patch("/api/v1/endpoints/" + endpointId).with(account.session())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"enabled\":false}"))
                 .andExpect(status().isOk());
         replay(original, account).andExpect(jsonPath("$.reason").value("ENDPOINT_DISABLED"));
 
-        mvc.perform(delete("/api/v1/endpoints/" + endpointId).header("Authorization", account.bearer()))
+        mvc.perform(delete("/api/v1/endpoints/" + endpointId).with(account.session()))
                 .andExpect(status().isNoContent());
         replay(original, account).andExpect(jsonPath("$.reason").value("ENDPOINT_DELETED"));
         assertThat(detail(original).get("replayEligibility").get("eligible").asBoolean()).isFalse();

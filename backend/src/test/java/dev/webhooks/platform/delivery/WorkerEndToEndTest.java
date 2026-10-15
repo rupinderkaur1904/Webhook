@@ -35,7 +35,7 @@ class WorkerEndToEndTest {
     void submittedEventIsDeliveredByTheBackgroundWorker() throws Exception {
         try (TestReceiver receiver = new TestReceiver()) {
             var account = data.newAccount();
-            mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+            mvc.perform(post("/api/v1/endpoints").with(account.session())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"name\":\"e2e\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                     .andExpect(status().isCreated());

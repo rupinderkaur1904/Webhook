@@ -1,12 +1,73 @@
-import { Anchor, Badge, Button, Card, Code, Group, SimpleGrid, Stack, Switch, Text, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Button, Card, Code, CopyButton, Group, Modal, NumberInput, SimpleGrid, Stack, Switch, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { errorMessage } from '../api/client';
-import { useDeliveries, useEndpoint, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
+import { useDeliveries, useEndpoint, useRotateSecret, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
+import type { Endpoint, SecretRotated } from '../api/types';
 import { DeliveriesTable } from '../components/DeliveriesTable';
 import { Field } from '../components/Field';
 import { EmptyState, QueryState } from '../components/QueryState';
 import { Time } from '../components/Time';
+
+function RotateSecretModal({ endpoint, opened, onClose }: { endpoint: Endpoint; opened: boolean; onClose: () => void }) {
+  const [graceHours, setGraceHours] = useState<number | ''>(24);
+  const [result, setResult] = useState<SecretRotated | null>(null);
+  const rotate = useRotateSecret();
+  // The form resets once the closing animation has finished, so the shown-once value never flashes back to the form.
+  const reset = () => {
+    setResult(null);
+    setGraceHours(24);
+    rotate.reset();
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} onExitTransitionEnd={reset} title={result ? 'New signing secret' : 'Rotate signing secret'}>
+      {result ? (
+        <Stack>
+          <Alert color="yellow" title="Copy the new secret now">
+            This is the only time it is shown.{' '}
+            {result.previousSecretExpiresAt
+              ? `Until ${new Date(result.previousSecretExpiresAt).toLocaleString()} every delivery is signed with both the new and the old secret, so update your receiver before then.`
+              : 'The old secret no longer signs deliveries.'}
+          </Alert>
+          <Code block>{result.secret}</Code>
+          <Group>
+            <CopyButton value={result.secret}>{({ copied, copy }) => <Button onClick={copy}>{copied ? 'Copied' : 'Copy secret'}</Button>}</CopyButton>
+            <Button variant="default" onClick={onClose}>
+              Done
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        <Stack>
+          <Text size="sm">
+            A new secret is generated for <b>{endpoint.name}</b>. During the grace period deliveries carry two signatures, so the
+            receiver keeps verifying while you deploy the new secret.
+          </Text>
+          <NumberInput
+            label="Grace period (hours)"
+            description="0 drops the old secret immediately; at most 72."
+            min={0}
+            max={72}
+            allowDecimal={false}
+            value={graceHours}
+            onChange={(v) => setGraceHours(typeof v === 'number' ? v : v.trim() === '' ? '' : Number.parseInt(v, 10) || 0)}
+          />
+          {rotate.isError && <Alert color="red">{errorMessage(rotate.error)}</Alert>}
+          <Button
+            color="orange"
+            loading={rotate.isPending}
+            disabled={graceHours === '' || graceHours < 0 || graceHours > 72}
+            onClick={() => graceHours !== '' && rotate.mutate({ id: endpoint.id, gracePeriodHours: graceHours }, { onSuccess: setResult })}
+          >
+            Rotate secret
+          </Button>
+        </Stack>
+      )}
+    </Modal>
+  );
+}
 
 export function EndpointDetailPage() {
   const { id = '' } = useParams();
@@ -14,6 +75,7 @@ export function EndpointDetailPage() {
   const deliveries = useDeliveries({ endpointId: id });
   const setEnabled = useSetEndpointEnabled();
   const sendTest = useSendTestEvent();
+  const [rotating, setRotating] = useState(false);
   const e = endpoint.data;
   const rows = deliveries.data?.pages.flatMap((p) => p.items) ?? [];
 
@@ -58,6 +120,7 @@ export function EndpointDetailPage() {
                 </Button>
               </Group>
             </Group>
+            <RotateSecretModal endpoint={e} opened={rotating} onClose={() => setRotating(false)} />
             <Card withBorder>
               <SimpleGrid cols={{ base: 1, sm: 3 }}>
                 <Field label="URL">
@@ -75,7 +138,17 @@ export function EndpointDetailPage() {
                       ))}
                 </Field>
                 <Field label="Signing secret">
-                  <Code>{e.secretPrefix}…</Code>
+                  <Group gap="xs">
+                    <Code>{e.secretPrefix}…</Code>
+                    <Button size="compact-xs" variant="subtle" onClick={() => setRotating(true)}>
+                      Rotate
+                    </Button>
+                  </Group>
+                  {e.previousSecretExpiresAt && (
+                    <Text size="xs" c="dimmed">
+                      Previous secret also signs until <Time value={e.previousSecretExpiresAt} />
+                    </Text>
+                  )}
                 </Field>
                 {e.description && <Field label="Description">{e.description}</Field>}
                 <Field label="Created">
