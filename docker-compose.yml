@@ -41,6 +41,12 @@ services:
       # later adds another account; it does not change an existing account's password.
       WEBHOOKS_BOOTSTRAP_EMAIL: ${ADMIN_EMAIL:-dev@localhost}
       WEBHOOKS_BOOTSTRAP_PASSWORD: ${ADMIN_PASSWORD:-local-dev-password}
+      # Receivers the platform may call even though they are on private addresses: the simulator,
+      # and a receiver example running on this computer (examples/receivers, port 3000).
+      WEBHOOKS_SSRF_ALLOWED_HOSTS: ${ALLOWED_RECEIVER_HOSTS:-simulator:9090,host.docker.internal:3000}
+    # Docker Desktop provides host.docker.internal; this line adds it on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "${APP_PORT:-8080}:8080"
     # SIGTERM first; the worker gets 20s to finish in-flight deliveries.
