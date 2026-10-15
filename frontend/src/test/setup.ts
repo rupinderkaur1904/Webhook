@@ -6,6 +6,11 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   sessionStorage.clear();
+  // Expire every cookie a test set (jsdom keeps document.cookie between tests).
+  for (const cookie of document.cookie.split(';')) {
+    const name = cookie.split('=')[0].trim();
+    if (name) document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+  }
 });
 
 // Mantine relies on these browser APIs, which jsdom does not provide.

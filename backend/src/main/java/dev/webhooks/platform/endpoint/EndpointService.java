@@ -1,13 +1,17 @@
 package dev.webhooks.platform.endpoint;
 
 import dev.webhooks.platform.common.ApiException;
+import dev.webhooks.platform.config.WebhookProperties;
 import dev.webhooks.platform.crypto.SecretCipher;
 import dev.webhooks.platform.crypto.Tokens;
 import dev.webhooks.platform.endpoint.EndpointDtos.CreateEndpointRequest;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointCreatedResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointResponse;
+import dev.webhooks.platform.endpoint.EndpointDtos.RotateSecretRequest;
+import dev.webhooks.platform.endpoint.EndpointDtos.RotateSecretResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.UpdateEndpointRequest;
 import dev.webhooks.platform.ssrf.DestinationPolicy;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -22,20 +26,28 @@ public class EndpointService {
     private final EndpointRepository endpoints;
     private final SecretCipher cipher;
     private final DestinationPolicy destinationPolicy;
+    private final int maxEndpointsPerAccount;
 
-    public EndpointService(EndpointRepository endpoints, SecretCipher cipher, DestinationPolicy destinationPolicy) {
+    public EndpointService(EndpointRepository endpoints, SecretCipher cipher, DestinationPolicy destinationPolicy,
+            WebhookProperties properties) {
         this.endpoints = endpoints;
         this.cipher = cipher;
         this.destinationPolicy = destinationPolicy;
+        this.maxEndpointsPerAccount = properties.limits().maxEndpointsPerAccount();
     }
 
     @Transactional
     public EndpointCreatedResponse create(UUID accountId, CreateEndpointRequest request) {
         String url = validateUrl(request.url());
+        endpoints.lockAccountForCreate(accountId);
+        if (endpoints.countActive(accountId) >= maxEndpointsPerAccount) {
+            throw new ApiException(HttpStatus.UNPROCESSABLE_CONTENT, "ENDPOINT_LIMIT_REACHED",
+                    "An account can have at most " + maxEndpointsPerAccount + " endpoints; delete one first");
+        }
         UUID id = UUID.randomUUID();
         String secret = Tokens.newSigningSecret();
         Endpoint endpoint = new Endpoint(id, accountId, request.name().trim(), blankToNull(request.description()), url,
-                eventTypes(request.eventTypes()), true, secretPrefix(secret), Instant.now(), Instant.now());
+                eventTypes(request.eventTypes()), true, secretPrefix(secret), null, Instant.now(), Instant.now());
         try {
             endpoints.insert(endpoint, cipher.encrypt(secret, id));
         } catch (DuplicateKeyException e) {
@@ -65,6 +77,7 @@ public class EndpointService {
                 request.eventTypes() != null ? eventTypes(request.eventTypes()) : current.eventTypes(),
                 request.enabled() != null ? request.enabled() : current.enabled(),
                 current.secretPrefix(),
+                current.previousSecretExpiresAt(),
                 current.createdAt(),
                 current.updatedAt());
         try {
@@ -80,6 +93,21 @@ public class EndpointService {
         if (!endpoints.softDelete(accountId, id)) {
             throw ApiException.notFound("Endpoint");
         }
+    }
+
+    /**
+     * Issues a new signing secret. During the grace period every delivery carries two signatures (new
+     * and old), so receivers can switch secrets without rejecting anything in between.
+     */
+    @Transactional
+    public RotateSecretResponse rotateSecret(UUID accountId, UUID id, RotateSecretRequest request) {
+        int graceHours = request == null || request.gracePeriodHours() == null ? 24 : request.gracePeriodHours();
+        String secret = Tokens.newSigningSecret();
+        Instant previousExpiresAt = graceHours == 0 ? null : Instant.now().plus(Duration.ofHours(graceHours));
+        if (!endpoints.rotateSecret(accountId, id, cipher.encrypt(secret, id), secretPrefix(secret), previousExpiresAt)) {
+            throw ApiException.notFound("Endpoint");
+        }
+        return new RotateSecretResponse(secret, secretPrefix(secret), previousExpiresAt);
     }
 
     private String validateUrl(String url) {

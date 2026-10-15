@@ -1,5 +1,7 @@
 package dev.webhooks.platform.endpoint;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -39,17 +41,24 @@ public final class EndpointDtos {
             List<String> eventTypes,
             boolean enabled,
             String secretPrefix,
+            Instant previousSecretExpiresAt,
             Instant createdAt,
             Instant updatedAt) {
 
         static EndpointResponse from(Endpoint e) {
             return new EndpointResponse(e.id(), e.name(), e.description(), e.url(), e.eventTypes(), e.enabled(),
-                    e.secretPrefix(), e.createdAt(), e.updatedAt());
+                    e.secretPrefix(), e.previousSecretExpiresAt(), e.createdAt(), e.updatedAt());
         }
     }
 
     /** Returned only on creation: the signing secret is never shown again. */
     public record EndpointCreatedResponse(EndpointResponse endpoint, String secret) {}
+
+    /** Hours the old secret keeps signing alongside the new one; 0 drops it immediately. Default 24. */
+    public record RotateSecretRequest(@Min(0) @Max(72) Integer gracePeriodHours) {}
+
+    /** Returned only on rotation: the new secret is never shown again. */
+    public record RotateSecretResponse(String secret, String secretPrefix, Instant previousSecretExpiresAt) {}
 
     public record EndpointListResponse(List<EndpointResponse> items) {}
 

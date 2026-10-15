@@ -59,7 +59,7 @@ class LeaseRecoveryTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+        endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"recovery\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString())
@@ -166,7 +166,7 @@ class LeaseRecoveryTest {
     void deliveryWhoseEndpointWasDeletedDuringTheCrashIsCancelled() throws Exception {
         UUID id = submit("deleted");
         claimAndCrash("crashed-worker");
-        mvc.perform(delete("/api/v1/endpoints/" + endpointId).header("Authorization", account.bearer()))
+        mvc.perform(delete("/api/v1/endpoints/" + endpointId).with(account.session()))
                 .andExpect(status().isNoContent());
         expireLeases();
         reaper.reapExpired();
@@ -260,14 +260,14 @@ class LeaseRecoveryTest {
         attempt();
         receiver.respondWith(r -> Response.status(200));
         UUID replay = UUID.fromString(json.readTree(mvc.perform(post("/api/v1/deliveries/" + original + "/replay")
-                        .header("Authorization", account.bearer())).andExpect(status().isAccepted())
+                        .with(account.session())).andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString()).get("id").asString());
 
         claimAndCrash("crashed-worker");
         expireLeases();
         reaper.reapExpired();
         // Still in progress (RETRYING), so the chain still refuses a second replay.
-        mvc.perform(post("/api/v1/deliveries/" + original + "/replay").header("Authorization", account.bearer()))
+        mvc.perform(post("/api/v1/deliveries/" + original + "/replay").with(account.session()))
                 .andExpect(status().isConflict());
         makeDue(replay);
         attempt();

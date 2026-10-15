@@ -8,6 +8,7 @@ export const endpoint: Endpoint = {
   eventTypes: ['order.*'],
   enabled: true,
   secretPrefix: 'whsec_abcd',
+  previousSecretExpiresAt: null,
   createdAt: '2026-10-15T03:00:00Z',
   updatedAt: '2026-10-15T03:00:00Z',
 };

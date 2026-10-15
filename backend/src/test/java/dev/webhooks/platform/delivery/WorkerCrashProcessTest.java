@@ -68,7 +68,7 @@ class WorkerCrashProcessTest {
                 }
                 return Response.status(200);
             });
-            String endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+            String endpointId = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content("{\"name\":\"crash\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                     .andReturn().getResponse().getContentAsString()).get("endpoint").get("id").asString();

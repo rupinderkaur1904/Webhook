@@ -9,6 +9,7 @@ import dev.webhooks.platform.event.EventDtos.CreateEventRequest;
 import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
 import dev.webhooks.platform.event.EventDtos.EventDetail;
 import dev.webhooks.platform.event.EventDtos.EventSummary;
+import dev.webhooks.platform.ratelimit.RateLimiter;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
@@ -34,25 +35,29 @@ public class EventController {
     private final EventRepository events;
     private final DeliveryQueryRepository deliveries;
     private final ObjectMapper objectMapper;
+    private final RateLimiter rateLimiter;
 
     public EventController(IngestionService ingestion, EventRepository events, DeliveryQueryRepository deliveries,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, RateLimiter rateLimiter) {
         this.ingestion = ingestion;
         this.events = events;
         this.deliveries = deliveries;
         this.objectMapper = objectMapper;
+        this.rateLimiter = rateLimiter;
     }
 
     /**
      * Accepts an event for asynchronous delivery. Returns {@code 202} once the event and its
      * deliveries are committed. Repeating a request with the same {@code Idempotency-Key} returns
      * {@code 200} with the original response and {@code Idempotent-Replayed: true}; reusing the key
-     * for a different request returns {@code 409}.
+     * for a different request returns {@code 409}. Limited per credential; over the limit returns
+     * {@code 429} with {@code Retry-After}.
      */
     @PostMapping
     ResponseEntity<EventAcceptedResponse> submit(@AuthenticationPrincipal AccountPrincipal principal,
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateEventRequest request) {
+        rateLimiter.checkIngest(principal.credentialId());
         var result = ingestion.ingest(principal.accountId(), idempotencyKey, request);
         if (result.replayed()) {
             return ResponseEntity.ok().header("Idempotent-Replayed", "true").body(result.response());

@@ -17,7 +17,10 @@ public record WebhookProperties(
         @DefaultValue Delivery delivery,
         @DefaultValue Retry retry,
         @DefaultValue Ssrf ssrf,
-        @DefaultValue Replay replay) {
+        @DefaultValue Replay replay,
+        @DefaultValue Auth auth,
+        @DefaultValue Limits limits,
+        @DefaultValue RateLimit rateLimit) {
 
     public WebhookProperties {
         if (worker != null && delivery != null) {
@@ -88,4 +91,26 @@ public record WebhookProperties(
             }
         }
     }
+
+    /**
+     * Dashboard accounts. Self-registration is off unless explicitly enabled. The session cookie is
+     * Secure unless {@code sessionCookieSecure} is turned off (plain-HTTP local development only).
+     */
+    public record Auth(@DefaultValue("false") boolean registrationEnabled,
+            @DefaultValue("true") boolean sessionCookieSecure) {}
+
+    /** Request and resource limits. */
+    public record Limits(
+            @DefaultValue("262144") long maxRequestBytes,
+            @DefaultValue("50") int maxEndpointsPerAccount) {}
+
+    /**
+     * In-memory token buckets, per instance. Ingestion is limited per credential (API key or
+     * dashboard session); login attempts per client IP.
+     */
+    public record RateLimit(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("50") int ingestPerSecond,
+            @DefaultValue("100") int ingestBurst,
+            @DefaultValue("5") int loginPerMinute) {}
 }

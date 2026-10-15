@@ -1,6 +1,8 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api } from './client';
+import { api, ensureCsrfToken } from './client';
 import type {
+  ApiKey,
+  ApiKeyCreated,
   DeliveryDetail,
   DeliveryFilter,
   DeliverySummary,
@@ -12,6 +14,8 @@ import type {
   MetricsWindow,
   Overview,
   Page,
+  SecretRotated,
+  User,
 } from './types';
 
 /** Active views poll so the dashboard follows the worker without a reload. */
@@ -139,5 +143,76 @@ export function useOverview(window: MetricsWindow) {
     queryKey: ['overview', window],
     queryFn: () => api<Overview>(`/api/v1/metrics/overview?window=${window}`),
     refetchInterval: LIVE_REFRESH_MS,
+  });
+}
+
+/** The signed-in user; a 401 here means "show the login page". */
+export function useMe() {
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: () => api<User>('/api/v1/auth/me'),
+    retry: false,
+    staleTime: Infinity,
+  });
+}
+
+export function useLogin() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: { email: string; password: string }) => {
+      await ensureCsrfToken();
+      return api<User>('/api/v1/auth/login', { method: 'POST', body: JSON.stringify(body) });
+    },
+    onSuccess: (user) => {
+      // Nothing cached for a previous user may leak into this session.
+      client.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+      client.setQueryData(['me'], user);
+    },
+  });
+}
+
+export function useLogout() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api<void>('/api/v1/auth/logout', { method: 'POST' }),
+    onSettled: () => {
+      client.setQueryData(['me'], null);
+      client.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' });
+    },
+  });
+}
+
+export function useApiKeys() {
+  return useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => api<{ items: ApiKey[] }>('/api/v1/api-keys').then((r) => r.items),
+  });
+}
+
+export function useCreateApiKey() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (name: string) => api<ApiKeyCreated>('/api/v1/api-keys', { method: 'POST', body: JSON.stringify({ name }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+export function useRevokeApiKey() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/api/v1/api-keys/${id}`, { method: 'DELETE' }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+}
+
+export function useRotateSecret() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, gracePeriodHours }: { id: string; gracePeriodHours: number }) =>
+      api<SecretRotated>(`/api/v1/endpoints/${id}/rotate-secret`, {
+        method: 'POST',
+        body: JSON.stringify({ gracePeriodHours }),
+      }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['endpoints'] }),
   });
 }

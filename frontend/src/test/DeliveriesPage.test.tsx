@@ -1,6 +1,5 @@
 import { screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { setApiKey } from '../api/client';
 import { DeliveriesPage } from '../pages/DeliveriesPage';
 import { deadLetter, endpoint } from './fixtures';
 import { fetchedUrls, jsonResponse, mockApi, renderAt } from './render';
@@ -9,7 +8,6 @@ const empty = { items: [], nextCursor: null };
 
 describe('DeliveriesPage', () => {
   it('shows a loading state, then the deliveries from the API', async () => {
-    setApiKey('whk_test');
     const fetchMock = mockApi({
       '/api/v1/deliveries': { items: [deadLetter], nextCursor: null },
       '/api/v1/endpoints': { items: [endpoint] },
@@ -23,7 +21,10 @@ describe('DeliveriesPage', () => {
 
     expect(fetchedUrls(fetchMock)).toContain('/api/v1/deliveries?limit=50');
     const call = fetchMock.mock.calls.find((c) => String(c[0]).startsWith('/api/v1/deliveries'))!;
-    expect(new Headers(call[1]?.headers).get('Authorization')).toBe('Bearer whk_test');
+    // Reads ride on the session cookie: no credential in a header, no CSRF token needed.
+    expect(call[1]?.credentials).toBe('same-origin');
+    expect(new Headers(call[1]?.headers).get('Authorization')).toBeNull();
+    expect(new Headers(call[1]?.headers).get('X-XSRF-TOKEN')).toBeNull();
   });
 
   it('passes filters from the URL to the API', async () => {

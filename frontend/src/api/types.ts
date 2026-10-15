@@ -16,8 +16,38 @@ export interface Endpoint {
   eventTypes: string[];
   enabled: boolean;
   secretPrefix: string;
+  /** Set while a rotated-out secret still signs deliveries alongside the current one. */
+  previousSecretExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SecretRotated {
+  secret: string;
+  secretPrefix: string;
+  previousSecretExpiresAt: string | null;
+}
+
+export interface User {
+  id: string;
+  email: string;
+}
+
+export interface ApiKey {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+}
+
+export interface ApiKeyCreated {
+  id: string;
+  name: string;
+  /** The plaintext key: returned once, at creation. */
+  key: string;
+  prefix: string;
 }
 
 export interface EndpointCreated {
@@ -169,4 +199,5 @@ export interface Problem {
   detail: string;
   errors?: { field: string; message: string }[];
   reason?: string;
+  requestId?: string;
 }
