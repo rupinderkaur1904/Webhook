@@ -10,8 +10,8 @@ The full design is in [docs/PLAN.md](docs/PLAN.md). This README describes what i
 |---|---|---|
 | 1. End-to-end foundation | Schema, endpoints, idempotent ingestion, PostgreSQL queue + worker, signing, simulator, minimal dashboard | **Done** |
 | 2. Delivery reliability | Retry classification, exponential backoff with jitter, `Retry-After`, retry exhaustion | **Done** |
-| 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | Next |
-| 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | Planned |
+| 3. Developer experience | Full dashboard, dead-letter view, replay, scripted failure simulator | **Done** |
+| 4. Recovery and concurrency | Lease reaper, crash recovery, stale-worker and duplicate scenarios | Next |
 | 5. Security hardening | Login sessions, API-key management, full SSRF test matrix, rate limits, request limits | Planned |
 | 6. Reliability and observability | Circuit breaker, endpoint health, metrics, structured logging | Planned |
 | 7. Final verification | E2E suite, deployment, complete documentation | Planned |
@@ -91,11 +91,34 @@ Signatures follow [Standard Webhooks](https://www.standardwebhooks.com/). The si
 
 `receiver-simulator/src/main/java/dev/webhooks/simulator/SignatureVerifier.java` is a reference verifier.
 
+### Dead letters and replay
+
+A dead-lettered delivery keeps its event body, every attempt, the last error and status code, and its reason (`RETRIES_EXHAUSTED`, `NON_RETRYABLE_RESPONSE` or `DESTINATION_BLOCKED`). Nothing retries it automatically.
+
+`POST /api/v1/deliveries/{id}/replay`, or the **Replay** button in the dashboard, creates a **new** delivery with these properties:
+- It sends the same event to the same endpoint, at the endpoint's current URL and with its current secret.
+- It has a fresh attempt budget and goes through the normal retry policy.
+- It is linked to the dead letter by `replayOfDeliveryId`. Every delivery in a chain shares the `rootDeliveryId` of the original.
+- The receiver sees the same `webhook-id` (the event id) and a new `X-Webhook-Delivery-Id`.
+
+The dead letter itself and its attempts are never modified.
+
+A replay is refused with `409 REPLAY_NOT_ELIGIBLE` and one of these `reason` values:
+
+| `reason` | When |
+|---|---|
+| `NOT_DEAD_LETTERED` | The delivery is not dead-lettered. |
+| `ENDPOINT_DELETED` / `ENDPOINT_DISABLED` | The endpoint can't receive deliveries. Enable it first. |
+| `REPLAY_IN_PROGRESS` | A delivery in the same chain is still pending, retrying or in flight. |
+| `REPLAY_LIMIT_REACHED` | The chain already has `webhooks.replay.max-per-delivery` replays (default 10). |
+
+Two simultaneous replay clicks cannot both succeed. A partial unique index allows only one unfinished delivery per chain, and the request that loses gets `REPLAY_IN_PROGRESS`. The replay also takes a share lock on the endpoint row, so deleting the endpoint at the same moment either rejects the replay or cancels it. `GET /deliveries/{id}` reports `replayEligibility` and the full `chain`.
+
 ### Delivery semantics
 
 Delivery is **at-least-once**, not exactly-once. A receiver can see the same `webhook-id` more than once. That happens when it processes a request but the response is lost, when a timeout fires after processing, or later when a delivery is replayed or a worker lease expires. The platform guarantees that an accepted event is durably stored and attempted. Preventing duplicate side effects is the receiver's job, by deduplicating on `webhook-id`.
 
-## API (Stage 1)
+## API
 
 All routes are under `/api/v1` and need `Authorization: Bearer whk_…`. Errors are `application/problem+json` with a stable `code`. Resources owned by another account return `404`.
 
@@ -106,9 +129,25 @@ All routes are under `/api/v1` and need `Authorization: Bearer whk_…`. Errors 
 | `GET` / `PATCH` / `DELETE` | `/endpoints/{id}` | Read, update (`name`, `description`, `url`, `eventTypes`, `enabled`), or soft-delete. Deleting cancels queued deliveries. |
 | `POST` | `/endpoints/{id}/test` | Queue a real `webhook.test` event to this endpoint. |
 | `POST` | `/events` | Submit an event. `Idempotency-Key` header required. |
-| `GET` | `/events`, `/events/{id}` | List events (cursor-paginated), or get one with its deliveries. |
-| `GET` | `/deliveries` | Filter by `status` (repeatable), `endpointId`, `eventId`, `eventType`. Cursor-paginated. |
-| `GET` | `/deliveries/{id}` | Delivery with its full attempt history and the payload sent. |
+| `GET` | `/events`, `/events/{id}` | List events, with per-status delivery counts. Filter by `eventType`, `from`, `to`; cursor-paginated. Or get one event with its deliveries. |
+| `GET` | `/deliveries` | Filter by `status` (repeatable), `endpointId`, `eventId`, `eventType`, `deadLetterReason`, `from` (inclusive), `to` (exclusive). Cursor-paginated. The dead-letter view is `status=DEAD_LETTERED`. |
+| `GET` | `/deliveries/{id}` | Delivery with its attempt history, the payload sent, `replayEligibility` and the replay `chain`. |
+| `POST` | `/deliveries/{id}/replay` | Replay a dead letter (`202` with the new delivery). See [Dead letters and replay](#dead-letters-and-replay). |
+| `GET` | `/metrics/overview?window=1h\|24h\|7d` | Overview numbers for the dashboard (definitions below). |
+
+**Overview metrics.** All of these are computed from the database, using the database clock.
+
+| Field | Definition |
+|---|---|
+| `eventsSubmitted` | Events created in the window. |
+| `deliveriesSucceeded` | Deliveries whose `delivered_at` falls in the window. |
+| `deliveriesDeadLettered` | Deliveries whose `dead_lettered_at` falls in the window, as a total and per reason. |
+| `deliverySuccessRate` | `succeeded / (succeeded + deadLettered)` over the window. It is `null` when both are 0. |
+| `current` | Pending, retrying and in-flight counts right now. These are not windowed. |
+| `attempts` | Attempts started in the window that have finished: the succeeded count, the failed count (abandoned attempts count as failed), the success rate, and p50/p95 latency. |
+| `recentActivity` | The 20 most recent attempts, including ones still in flight. |
+
+Endpoint health and the circuit breaker are added to the overview in Stage 6.
 
 The OpenAPI document is at `/v3/api-docs` and Swagger UI is at `/swagger-ui.html`.
 
@@ -167,15 +206,42 @@ The app refuses to start without a valid encryption key.
 With the backend (`local` profile) and simulator running:
 
 ```bash
-scripts/demo.sh success      # delivered first time; simulator reports signature VALID
-scripts/demo.sh recover      # 500, 500, then the receiver recovers -> DELIVERED after 3 attempts
-scripts/demo.sh exhaust      # always 503 -> 4 attempts with growing delays -> DEAD_LETTERED / RETRIES_EXHAUSTED
-scripts/demo.sh rate-limit   # 429 + Retry-After: 5 -> next attempt waits 5s -> DELIVERED
-scripts/demo.sh permanent    # 400 -> DEAD_LETTERED / NON_RETRYABLE_RESPONSE after one attempt
-scripts/demo.sh idempotency  # same key twice -> 200 replay; same key, different payload -> 409
+scripts/demo.sh success       # delivered first time; simulator reports signature VALID
+scripts/demo.sh recover       # script [500, 500] then 200 -> DELIVERED on attempt 3
+scripts/demo.sh rate-limit    # script [429 + Retry-After: 5] then 200 -> second attempt waits 5s
+scripts/demo.sh timeout       # script [200 after 8s] -> attempt 1 TIMEOUT (5s), retry DELIVERED; same webhook-id twice
+scripts/demo.sh exhaust       # always 503 -> 4 attempts -> DEAD_LETTERED / RETRIES_EXHAUSTED, listed as a dead letter
+scripts/demo.sh permanent     # 400 -> DEAD_LETTERED / NON_RETRYABLE_RESPONSE after one attempt
+scripts/demo.sh intermittent  # 50% seeded failures, 8 events -> every one retried until DELIVERED
+scripts/demo.sh replay        # exhaust, fix the receiver, replay -> DELIVERED; a second replay -> 409 REPLAY_IN_PROGRESS
+scripts/demo.sh idempotency   # same key twice -> 200 replay; same key, different payload -> 409
+scripts/demo.sh signature     # verify a delivered request: VALID; tampered body or wrong secret: INVALID_SIGNATURE
 ```
 
 The simulator's request log marks repeated `webhook-id`s as duplicates. This shows why receivers must deduplicate.
+
+### Failure simulator
+
+The simulator runs as its own app on port 9090. `PUT /receivers/{name}/config` accepts the following fields:
+
+```json
+{
+  "status": 200, "delayMs": 0, "headers": {}, "secret": "whsec_…",
+  "script": [ { "status": 500 }, { "status": 429, "headers": { "Retry-After": "5" } }, { "status": 200, "delayMs": 8000 } ],
+  "failureRate": 0.3, "failureStatus": 503, "seed": 42
+}
+```
+
+For each request, the first rule that applies decides the response:
+1. The next unused `script` step.
+2. With probability `failureRate`, the `failureStatus`. These failures are drawn from a generator seeded with `seed`, so a run can be repeated exactly.
+3. The default `status`, `delayMs` and `headers`.
+
+Saving a new config restarts both the script and the random sequence. Setting a delay longer than the platform's response timeout simulates a timeout.
+
+Other endpoints:
+- `GET /receivers/{name}/requests` returns the request log. Each entry shows the signature result, whether its `webhook-id` was a duplicate, the status returned and the rule that chose it.
+- `POST /verify` checks a signature by hand, for example to show that a tampered body is rejected.
 
 ## Testing
 
@@ -198,10 +264,22 @@ Integration tests always run against real PostgreSQL. They cover:
 - a real stop-and-restart test, where one application instance schedules a retry and a fresh instance completes it;
 - recording of 5xx, timeouts, refused connections and redirects (redirects are never followed);
 - stale-lease fencing, and 8 workers claiming 400 deliveries concurrently with no duplicates;
-- the full worker flow end to end.
+- the full worker flow end to end;
+- replay:
+  - a linked new delivery with the same `webhook-id`;
+  - the dead letter left untouched;
+  - every eligibility reason;
+  - the per-chain limit;
+  - 12 concurrent replay requests creating exactly one delivery;
+  - cross-account 404;
+- overview metrics against seeded deliveries inside and outside the window, plus delivery and event filters;
+- simulator scripts, seeded intermittent failures and the verify endpoint;
+- dashboard pages with Vitest and Testing Library: overview, deliveries, dead letters (including replay), delivery detail (replay chain, disabled replay with its reason, a rejected replay), events, and endpoint detail.
 
 ## Known limitations (current stage)
 
 - **No lease reaper yet** (Stage 4). If the process dies mid-attempt, that delivery stays `IN_FLIGHT`. Its lease and `STARTED` attempt row are already recorded, so the Stage 4 reaper will recover it.
 - **API-key authentication only** (Stage 5). The dashboard keeps the key in `sessionStorage`. Stage 5 replaces this with HttpOnly session cookies.
 - **No ordering guarantee** between events.
+- **A dead letter stays replayable after a later replay of it succeeded.** Replaying it again sends the event once more. The delivery detail shows the whole chain, so the earlier success is visible before you click.
+- **Endpoint health and the circuit breaker** are not built yet (Stage 6).

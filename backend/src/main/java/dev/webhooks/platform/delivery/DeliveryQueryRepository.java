@@ -9,6 +9,7 @@ import dev.webhooks.platform.delivery.DeliveryDtos.AttemptView;
 import dev.webhooks.platform.delivery.DeliveryDtos.DeliverySummary;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,13 @@ public class DeliveryQueryRepository {
         this.objectMapper = objectMapper;
     }
 
-    public record Filter(List<DeliveryStatus> statuses, UUID endpointId, UUID eventId, String eventType) {}
+    public record Filter(List<DeliveryStatus> statuses, UUID endpointId, UUID eventId, String eventType,
+            DeadLetterReason deadLetterReason, Instant from, Instant to) {
+
+        public Filter(List<DeliveryStatus> statuses, UUID endpointId, UUID eventId, String eventType) {
+            this(statuses, endpointId, eventId, eventType, null, null, null);
+        }
+    }
 
     public List<DeliverySummary> list(UUID accountId, Filter filter, Cursor cursor, int limit) {
         StringBuilder sql = new StringBuilder(SUMMARY_SELECT).append(" WHERE d.account_id = :account");
@@ -60,6 +67,18 @@ public class DeliveryQueryRepository {
             sql.append(" AND ev.event_type = :eventType");
             params.put("eventType", filter.eventType());
         }
+        if (filter.deadLetterReason() != null) {
+            sql.append(" AND d.dead_letter_reason = :reason");
+            params.put("reason", filter.deadLetterReason().name());
+        }
+        if (filter.from() != null) {
+            sql.append(" AND d.created_at >= :from");
+            params.put("from", offset(filter.from()));
+        }
+        if (filter.to() != null) {
+            sql.append(" AND d.created_at < :to");
+            params.put("to", offset(filter.to()));
+        }
         if (cursor != null) {
             sql.append(" AND (d.created_at, d.id) < (:cursorAt, :cursorId)");
             params.put("cursorAt", offset(cursor.createdAt()));
@@ -74,6 +93,15 @@ public class DeliveryQueryRepository {
         return jdbc.sql(SUMMARY_SELECT + " WHERE d.account_id = :account AND d.event_id = :eventId ORDER BY d.created_at, d.id")
                 .param("account", accountId)
                 .param("eventId", eventId)
+                .query(DeliveryQueryRepository::mapSummary)
+                .list();
+    }
+
+    /** The original delivery and all its replays, oldest first. */
+    public List<DeliverySummary> chain(UUID accountId, UUID rootDeliveryId) {
+        return jdbc.sql(SUMMARY_SELECT + " WHERE d.account_id = :account AND d.root_delivery_id = :root ORDER BY d.created_at, d.id")
+                .param("account", accountId)
+                .param("root", rootDeliveryId)
                 .query(DeliveryQueryRepository::mapSummary)
                 .list();
     }
@@ -139,6 +167,7 @@ public class DeliveryQueryRepository {
                 instant(rs, "delivered_at"),
                 instant(rs, "dead_lettered_at"),
                 rs.getObject("replay_of_delivery_id", UUID.class),
+                rs.getObject("root_delivery_id", UUID.class),
                 instant(rs, "created_at"));
     }
 }

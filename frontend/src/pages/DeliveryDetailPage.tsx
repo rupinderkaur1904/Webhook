@@ -1,23 +1,13 @@
-import { Anchor, Badge, Card, Code, Group, SimpleGrid, Stack, Text, Timeline, Title } from '@mantine/core';
+import { Alert, Anchor, Badge, Card, Code, Group, SimpleGrid, Stack, Text, Timeline, Title } from '@mantine/core';
 import { Link, useParams } from 'react-router-dom';
 import { useDelivery } from '../api/hooks';
-import type { Attempt } from '../api/types';
+import type { Attempt, DeliveryDetail } from '../api/types';
+import { Field } from '../components/Field';
+import { DEAD_LETTER_REASONS, REPLAY_REASONS, shortId } from '../components/labels';
 import { QueryState } from '../components/QueryState';
+import { ReplayButton } from '../components/ReplayButton';
 import { StatusBadge } from '../components/StatusBadge';
 import { Time } from '../components/Time';
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Text size="xs" c="dimmed">
-        {label}
-      </Text>
-      <Text size="sm" component="div">
-        {children}
-      </Text>
-    </div>
-  );
-}
 
 function AttemptItem({ attempt }: { attempt: Attempt }) {
   return (
@@ -57,6 +47,62 @@ function AttemptItem({ attempt }: { attempt: Attempt }) {
   );
 }
 
+function ReplaySection({ detail }: { detail: DeliveryDetail }) {
+  const { delivery, replayEligibility: eligibility, chain } = detail;
+  const newerReplays = chain.filter((d) => d.replayOfDeliveryId && d.createdAt > delivery.createdAt);
+  return (
+    <Stack gap="xs">
+      {delivery.status === 'DEAD_LETTERED' && (
+        <Alert color={eligibility.eligible ? 'blue' : 'gray'} variant="light">
+          <Group justify="space-between">
+            <Text size="sm">
+              {eligibility.eligible
+                ? 'Replay sends this event again as a new delivery with a fresh retry budget. This dead letter stays unchanged.'
+                : REPLAY_REASONS[eligibility.reason!]}{' '}
+              Replays used: {eligibility.replayCount} of {eligibility.maxReplays}.
+            </Text>
+            <ReplayButton deliveryId={delivery.id} eligibility={eligibility} openAfter size="sm" />
+          </Group>
+        </Alert>
+      )}
+      {chain.length > 1 && (
+        <>
+          <Title order={4}>Replay chain</Title>
+          <Timeline bulletSize={12} lineWidth={2} active={chain.findIndex((d) => d.id === delivery.id)}>
+            {chain.map((d) => (
+              <Timeline.Item key={d.id}>
+                <Group gap="xs">
+                  {d.id === delivery.id ? (
+                    <Text size="sm" ff="monospace" fw={600}>
+                      {shortId(d.id)} (this delivery)
+                    </Text>
+                  ) : (
+                    <Anchor component={Link} to={`/deliveries/${d.id}`} ff="monospace" size="sm">
+                      {shortId(d.id)}
+                    </Anchor>
+                  )}
+                  <Text size="xs" c="dimmed">
+                    {d.replayOfDeliveryId ? `replay of ${shortId(d.replayOfDeliveryId)}` : 'original'}
+                  </Text>
+                  <StatusBadge status={d.status} />
+                  <Text size="xs" c="dimmed">
+                    {d.attemptCount}/{d.maxAttempts} attempts · <Time value={d.createdAt} />
+                  </Text>
+                </Group>
+              </Timeline.Item>
+            ))}
+          </Timeline>
+          {newerReplays.length > 0 && delivery.status === 'DEAD_LETTERED' && (
+            <Text size="xs" c="dimmed">
+              This delivery has been replayed; see the newer deliveries above for the outcome.
+            </Text>
+          )}
+        </>
+      )}
+    </Stack>
+  );
+}
+
 export function DeliveryDetailPage() {
   const { id = '' } = useParams();
   const query = useDelivery(id);
@@ -73,18 +119,28 @@ export function DeliveryDetailPage() {
             <Group>
               <Title order={2}>Delivery</Title>
               <StatusBadge status={detail.delivery.status} />
+              {detail.delivery.replayOfDeliveryId && (
+                <Badge variant="outline" color="grape">
+                  replay of {shortId(detail.delivery.replayOfDeliveryId)}
+                </Badge>
+              )}
             </Group>
             <Card withBorder>
               <SimpleGrid cols={{ base: 1, sm: 3 }}>
                 <Field label="Delivery ID">
                   <Code>{detail.delivery.id}</Code>
                 </Field>
-                <Field label="Event ID">
-                  <Code>{detail.delivery.eventId}</Code>
+                <Field label="Event ID (webhook-id)">
+                  <Anchor component={Link} to={`/events/${detail.delivery.eventId}`} ff="monospace" size="sm">
+                    {detail.delivery.eventId}
+                  </Anchor>
                 </Field>
                 <Field label="Event type">{detail.delivery.eventType}</Field>
                 <Field label="Endpoint">
-                  {detail.delivery.endpointName} ({detail.endpointUrl})
+                  <Anchor component={Link} to={`/endpoints/${detail.delivery.endpointId}`} size="sm">
+                    {detail.delivery.endpointName}
+                  </Anchor>{' '}
+                  ({detail.endpointUrl})
                 </Field>
                 <Field label="Attempts">
                   {detail.delivery.attemptCount} of {detail.delivery.maxAttempts}
@@ -97,7 +153,9 @@ export function DeliveryDetailPage() {
                     <Time value={detail.delivery.nextAttemptAt} />
                   </Field>
                 )}
-                {detail.delivery.deadLetterReason && <Field label="Dead-letter reason">{detail.delivery.deadLetterReason}</Field>}
+                {detail.delivery.deadLetterReason && (
+                  <Field label="Dead-letter reason">{DEAD_LETTER_REASONS[detail.delivery.deadLetterReason]}</Field>
+                )}
                 {detail.delivery.lastError && <Field label="Last error">{detail.delivery.lastError}</Field>}
                 {detail.delivery.deliveredAt && (
                   <Field label="Delivered">
@@ -106,6 +164,7 @@ export function DeliveryDetailPage() {
                 )}
               </SimpleGrid>
             </Card>
+            <ReplaySection detail={detail} />
             <Title order={4}>Attempt history</Title>
             {detail.attempts.length === 0 ? (
               <Text c="dimmed" size="sm">

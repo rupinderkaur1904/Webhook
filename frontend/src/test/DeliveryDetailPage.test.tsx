@@ -2,49 +2,11 @@ import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { DeliveryDetail } from '../api/types';
 import { DeliveryDetailPage } from '../pages/DeliveryDetailPage';
-import { jsonResponse, renderAt } from './render';
+import userEvent from '@testing-library/user-event';
+import { deadLetter, deliveredDetail } from './fixtures';
+import { jsonResponse, mockApi, renderAt } from './render';
 
-const detail: DeliveryDetail = {
-  delivery: {
-    id: 'd1d1d1d1-0000-0000-0000-000000000000',
-    eventId: 'e1e1e1e1-0000-0000-0000-000000000000',
-    endpointId: 'p1p1p1p1-0000-0000-0000-000000000000',
-    endpointName: 'billing',
-    eventType: 'payment.succeeded',
-    status: 'DELIVERED',
-    attemptCount: 1,
-    maxAttempts: 1,
-    lastResponseStatus: 200,
-    lastError: null,
-    lastAttemptAt: '2026-10-15T04:00:00Z',
-    nextAttemptAt: null,
-    deadLetterReason: null,
-    deliveredAt: '2026-10-15T04:00:01Z',
-    deadLetteredAt: null,
-    replayOfDeliveryId: null,
-    createdAt: '2026-10-15T04:00:00Z',
-  },
-  endpointUrl: 'https://billing.example.com/hooks',
-  eventBody: { id: 'e1e1e1e1', type: 'payment.succeeded', data: { amount: 100 } },
-  attempts: [
-    {
-      id: 'a1',
-      attemptNumber: 1,
-      status: 'SUCCEEDED',
-      outcome: 'SUCCESS',
-      retryable: null,
-      requestUrl: 'https://billing.example.com/hooks',
-      responseStatus: 200,
-      responseHeaders: {},
-      responseBodyExcerpt: '{"ok":true}',
-      errorMessage: null,
-      retryAfterSeconds: null,
-      startedAt: '2026-10-15T04:00:00Z',
-      finishedAt: '2026-10-15T04:00:01Z',
-      durationMs: 42,
-    },
-  ],
-};
+const detail: DeliveryDetail = deliveredDetail;
 
 describe('DeliveryDetailPage', () => {
   it('shows the attempt history with status code and latency', async () => {
@@ -88,5 +50,62 @@ describe('DeliveryDetailPage', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse({ status: 404, code: 'NOT_FOUND', detail: 'Delivery not found' }, 404));
     renderAt('/deliveries/missing', '/deliveries/:id', <DeliveryDetailPage />);
     expect(await screen.findByText('Delivery not found')).toBeInTheDocument();
+  });
+});
+
+describe('DeliveryDetailPage replay', () => {
+  const dead: DeliveryDetail = {
+    ...detail,
+    delivery: { ...deadLetter },
+    replayEligibility: { eligible: true, reason: null, replayCount: 0, maxReplays: 10 },
+    chain: [deadLetter],
+  };
+
+  it('replays an eligible dead letter and opens the new delivery', async () => {
+    const replay = { ...deadLetter, id: 'r2r2r2r2-0000-0000-0000-000000000000', status: 'PENDING', replayOfDeliveryId: deadLetter.id };
+    const fetchMock = mockApi({
+      [`/api/v1/deliveries/${deadLetter.id}/replay`]: () => jsonResponse(replay, 202),
+      [`/api/v1/deliveries/${deadLetter.id}`]: dead,
+      [`/api/v1/deliveries/${replay.id}`]: { ...dead, delivery: replay, chain: [deadLetter, replay] },
+    });
+    renderAt(`/deliveries/${deadLetter.id}`, '/deliveries/:id', <DeliveryDetailPage />);
+
+    expect(await screen.findByText(/Replays used: 0 of 10/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Replay' }));
+
+    expect(await screen.findByText('Replay queued as a new delivery')).toBeInTheDocument();
+    const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/replay'))!;
+    expect(post[1]?.method).toBe('POST');
+    expect((await screen.findAllByText(/replay of 11111111/)).length).toBe(2);
+    expect(await screen.findByText('Replay chain')).toBeInTheDocument();
+  });
+
+  it('disables replay and explains why when the delivery is not eligible', async () => {
+    mockApi({
+      [`/api/v1/deliveries/${deadLetter.id}`]: {
+        ...dead,
+        replayEligibility: { eligible: false, reason: 'ENDPOINT_DISABLED', replayCount: 1, maxReplays: 10 },
+      },
+    });
+    renderAt(`/deliveries/${deadLetter.id}`, '/deliveries/:id', <DeliveryDetailPage />);
+
+    expect(await screen.findByText(/The endpoint is disabled. Enable it to replay./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Replay' })).toBeDisabled();
+  });
+
+  it('shows the server rejection when a replay races another one', async () => {
+    mockApi({
+      [`/api/v1/deliveries/${deadLetter.id}/replay`]: () =>
+        jsonResponse(
+          { status: 409, code: 'REPLAY_NOT_ELIGIBLE', reason: 'REPLAY_IN_PROGRESS', detail: 'A delivery for this event and endpoint is already in progress' },
+          409,
+        ),
+      [`/api/v1/deliveries/${deadLetter.id}`]: dead,
+    });
+    renderAt(`/deliveries/${deadLetter.id}`, '/deliveries/:id', <DeliveryDetailPage />);
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Replay' }));
+    expect(await screen.findByText('Replay rejected')).toBeInTheDocument();
+    expect(screen.getByText('A delivery for this event and endpoint is already in progress')).toBeInTheDocument();
   });
 });

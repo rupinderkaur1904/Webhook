@@ -16,7 +16,8 @@ public record WebhookProperties(
         @DefaultValue Worker worker,
         @DefaultValue Delivery delivery,
         @DefaultValue Retry retry,
-        @DefaultValue Ssrf ssrf) {
+        @DefaultValue Ssrf ssrf,
+        @DefaultValue Replay replay) {
 
     /** Optional account and API key created at startup, for local use before sign-up exists. */
     public record Bootstrap(String email, String password, String apiKey) {}
@@ -63,4 +64,14 @@ public record WebhookProperties(
      * must be empty in production.
      */
     public record Ssrf(@DefaultValue List<String> allowedHosts) {}
+
+    /** Manual replay of dead-lettered deliveries. Each replay chain allows at most {@code maxPerDelivery} replays. */
+    public record Replay(@DefaultValue("10") int maxPerDelivery) {
+
+        public Replay {
+            if (maxPerDelivery < 1) {
+                throw new IllegalArgumentException("webhooks.replay.max-per-delivery must be at least 1");
+            }
+        }
+    }
 }

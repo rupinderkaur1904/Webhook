@@ -3,9 +3,22 @@ import { useState } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { getApiKey, setApiKey } from './api/client';
 import { ConnectPage } from './pages/ConnectPage';
+import { DeadLettersPage } from './pages/DeadLettersPage';
 import { DeliveriesPage } from './pages/DeliveriesPage';
 import { DeliveryDetailPage } from './pages/DeliveryDetailPage';
+import { EndpointDetailPage } from './pages/EndpointDetailPage';
 import { EndpointsPage } from './pages/EndpointsPage';
+import { EventDetailPage } from './pages/EventDetailPage';
+import { EventsPage } from './pages/EventsPage';
+import { OverviewPage } from './pages/OverviewPage';
+
+const NAV = [
+  { to: '/overview', label: 'Overview' },
+  { to: '/endpoints', label: 'Endpoints' },
+  { to: '/events', label: 'Events' },
+  { to: '/deliveries', label: 'Deliveries' },
+  { to: '/dead-letters', label: 'Dead letters' },
+];
 
 export function App() {
   const [connected, setConnected] = useState(() => getApiKey() !== null);
@@ -33,15 +46,22 @@ export function App() {
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="xs">
-        <NavLink component={Link} to="/endpoints" label="Endpoints" active={location.pathname.startsWith('/endpoints')} />
-        <NavLink component={Link} to="/deliveries" label="Deliveries" active={location.pathname.startsWith('/deliveries')} />
+        {NAV.map((item) => (
+          <NavLink key={item.to} component={Link} to={item.to} label={item.label} active={location.pathname.startsWith(item.to)} />
+        ))}
       </AppShell.Navbar>
       <AppShell.Main>
         <Routes>
-          <Route path="/" element={<Navigate to="/deliveries" replace />} />
+          <Route path="/" element={<Navigate to="/overview" replace />} />
+          <Route path="/overview" element={<OverviewPage />} />
           <Route path="/endpoints" element={<EndpointsPage />} />
+          <Route path="/endpoints/:id" element={<EndpointDetailPage />} />
+          <Route path="/events" element={<EventsPage />} />
+          <Route path="/events/:id" element={<EventDetailPage />} />
           <Route path="/deliveries" element={<DeliveriesPage />} />
           <Route path="/deliveries/:id" element={<DeliveryDetailPage />} />
+          <Route path="/dead-letters" element={<DeadLettersPage />} />
+          <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>
       </AppShell.Main>
     </AppShell>

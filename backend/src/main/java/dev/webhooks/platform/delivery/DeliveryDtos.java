@@ -27,6 +27,7 @@ public final class DeliveryDtos {
             Instant deliveredAt,
             Instant deadLetteredAt,
             UUID replayOfDeliveryId,
+            UUID rootDeliveryId,
             Instant createdAt) {}
 
     public record AttemptView(
@@ -45,9 +46,21 @@ public final class DeliveryDtos {
             Instant finishedAt,
             Integer durationMs) {}
 
+    /**
+     * Whether the delivery can be replayed now. {@code reason} is one of
+     * {@link ReplayService.IneligibleReason} when it cannot.
+     */
+    public record ReplayEligibility(boolean eligible, String reason, int replayCount, int maxReplays) {}
+
+    /**
+     * {@code chain} lists every delivery of this event to this endpoint, oldest first: the original
+     * and each replay, including this one.
+     */
     public record DeliveryDetail(
             DeliverySummary delivery,
             String endpointUrl,
             JsonNode eventBody,
-            List<AttemptView> attempts) {}
+            List<AttemptView> attempts,
+            ReplayEligibility replayEligibility,
+            List<DeliverySummary> chain) {}
 }

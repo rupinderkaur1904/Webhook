@@ -50,6 +50,7 @@ export interface DeliverySummary {
   deliveredAt: string | null;
   deadLetteredAt: string | null;
   replayOfDeliveryId: string | null;
+  rootDeliveryId: string;
   createdAt: string;
 }
 
@@ -70,11 +71,92 @@ export interface Attempt {
   durationMs: number | null;
 }
 
+export type ReplayIneligibleReason =
+  | 'NOT_DEAD_LETTERED'
+  | 'ENDPOINT_DELETED'
+  | 'ENDPOINT_DISABLED'
+  | 'REPLAY_IN_PROGRESS'
+  | 'REPLAY_LIMIT_REACHED';
+
+export interface ReplayEligibility {
+  eligible: boolean;
+  reason: ReplayIneligibleReason | null;
+  replayCount: number;
+  maxReplays: number;
+}
+
 export interface DeliveryDetail {
   delivery: DeliverySummary;
   endpointUrl: string;
   eventBody: unknown;
   attempts: Attempt[];
+  replayEligibility: ReplayEligibility;
+  /** The original delivery and every replay of it, oldest first. */
+  chain: DeliverySummary[];
+}
+
+export interface DeliveryFilter {
+  statuses?: DeliveryStatus[];
+  endpointId?: string;
+  eventId?: string;
+  eventType?: string;
+  deadLetterReason?: DeadLetterReason;
+}
+
+export interface EventSummary {
+  id: string;
+  eventType: string;
+  idempotencyKey: string;
+  createdAt: string;
+  deliveryCount: number;
+  deliveredCount: number;
+  deadLetteredCount: number;
+  activeCount: number;
+}
+
+export interface EventDetail {
+  id: string;
+  eventType: string;
+  idempotencyKey: string;
+  createdAt: string;
+  occurredAt: string | null;
+  body: unknown;
+  deliveries: DeliverySummary[];
+}
+
+export type MetricsWindow = '1h' | '24h' | '7d';
+
+export interface RecentAttempt {
+  attemptId: string;
+  deliveryId: string;
+  endpointId: string;
+  endpointName: string;
+  eventType: string;
+  attemptNumber: number;
+  status: Attempt['status'];
+  outcome: string | null;
+  responseStatus: number | null;
+  durationMs: number | null;
+  startedAt: string;
+}
+
+export interface Overview {
+  window: MetricsWindow;
+  windowStart: string;
+  windowEnd: string;
+  eventsSubmitted: number;
+  deliveriesSucceeded: number;
+  deliveriesDeadLettered: { total: number; byReason: Partial<Record<DeadLetterReason, number>> };
+  current: { pending: number; retrying: number; inFlight: number };
+  deliverySuccessRate: number | null;
+  attempts: {
+    succeeded: number;
+    failed: number;
+    successRate: number | null;
+    latencyP50Ms: number | null;
+    latencyP95Ms: number | null;
+  };
+  recentActivity: RecentAttempt[];
 }
 
 export interface Problem {
@@ -82,4 +164,5 @@ export interface Problem {
   code: string;
   detail: string;
   errors?: { field: string; message: string }[];
+  reason?: string;
 }
