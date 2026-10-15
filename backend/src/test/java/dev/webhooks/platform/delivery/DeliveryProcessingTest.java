@@ -129,20 +129,25 @@ class DeliveryProcessingTest {
     }
 
     @Test
-    void serverErrorIsRecordedWithResponseDetails() throws Exception {
+    void serverErrorIsRecordedWithResponseDetailsAndScheduledForRetry() throws Exception {
         receiver.respondWith(r -> new Response(503, Map.of("Retry-After", "30", "X-Internal", "secret"),
                 "maintenance\u0000 window", 0));
         UUID deliveryId = submit("err");
+        Instant before = Instant.now();
         runOneAttempt();
 
         JsonNode detail = detail(deliveryId);
-        assertThat(detail.get("delivery").get("status").asString()).isEqualTo("DEAD_LETTERED");
-        assertThat(detail.get("delivery").get("deadLetterReason").asString()).isEqualTo("RETRIES_EXHAUSTED");
+        assertThat(detail.get("delivery").get("status").asString()).isEqualTo("RETRYING");
         assertThat(detail.get("delivery").get("lastResponseStatus").asInt()).isEqualTo(503);
         assertThat(detail.get("delivery").get("lastError").asString()).isEqualTo("HTTP 503");
+        // 503 + Retry-After: 30 outweighs the 5-10s backoff of the first retry.
+        Instant next = Instant.parse(detail.get("delivery").get("nextAttemptAt").asString());
+        assertThat(next).isBetween(before.plusSeconds(29), Instant.now().plusSeconds(31));
         JsonNode attempt = detail.get("attempts").get(0);
         assertThat(attempt.get("status").asString()).isEqualTo("FAILED");
         assertThat(attempt.get("outcome").asString()).isEqualTo("HTTP_SERVER_ERROR");
+        assertThat(attempt.get("retryable").asBoolean()).isTrue();
+        assertThat(attempt.get("retryAfterSeconds").asInt()).isEqualTo(30);
         assertThat(attempt.get("responseHeaders").get("retry-after").asString()).isEqualTo("30");
         assertThat(attempt.get("responseHeaders").has("x-internal")).as("only allowlisted headers stored").isFalse();
         assertThat(attempt.get("responseBodyExcerpt").asString()).isEqualTo("maintenance window");
@@ -230,7 +235,7 @@ class DeliveryProcessingTest {
     void deliveryListFiltersAndIsScopedToAccount() throws Exception {
         UUID ok = submit("f-ok");
         runOneAttempt();
-        receiver.respondWith(r -> Response.status(500));
+        receiver.respondWith(r -> Response.status(400));
         UUID failed = submit("f-fail");
         runOneAttempt();
 

@@ -2,14 +2,18 @@ package dev.webhooks.platform.worker;
 
 import dev.webhooks.platform.crypto.SecretCipher;
 import dev.webhooks.platform.delivery.ClaimedDelivery;
-import dev.webhooks.platform.delivery.DeadLetterReason;
 import dev.webhooks.platform.delivery.DeliveryRepository;
 import dev.webhooks.platform.delivery.DeliveryRepository.AttemptRecord;
 import dev.webhooks.platform.endpoint.EndpointRepository;
+import dev.webhooks.platform.retry.RetryAfter;
+import dev.webhooks.platform.retry.RetryClassifier;
+import dev.webhooks.platform.retry.RetryPolicy;
+import dev.webhooks.platform.retry.RetryPolicy.Decision;
 import dev.webhooks.platform.signing.WebhookSigner;
 import dev.webhooks.platform.ssrf.DestinationPolicy;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -42,10 +46,11 @@ public class DeliveryProcessor {
     private final WebhookHttpClient http;
     private final TransactionTemplate tx;
     private final ObjectMapper objectMapper;
+    private final RetryPolicy retryPolicy;
 
     public DeliveryProcessor(JdbcClient jdbc, EndpointRepository endpoints, DeliveryRepository deliveries,
             SecretCipher cipher, DestinationPolicy destinationPolicy, WebhookHttpClient http, TransactionTemplate tx,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, RetryPolicy retryPolicy) {
         this.jdbc = jdbc;
         this.endpoints = endpoints;
         this.deliveries = deliveries;
@@ -54,6 +59,7 @@ public class DeliveryProcessor {
         this.http = http;
         this.tx = tx;
         this.objectMapper = objectMapper;
+        this.retryPolicy = retryPolicy;
     }
 
     public void process(ClaimedDelivery claim) {
@@ -95,34 +101,45 @@ public class DeliveryProcessor {
     private void record(ClaimedDelivery claim, HttpAttemptResult result) {
         boolean success = result.outcome() == AttemptOutcome.SUCCESS;
         String error = success ? null : errorSummary(result);
+        Duration retryAfter = RetryAfter.parse(result.responseHeaders().get("retry-after"), Instant.now()).orElse(null);
+        Decision decision = retryPolicy.decide(result.outcome(), result.statusCode(), retryAfter,
+                claim.attemptNumber(), claim.maxAttempts());
+        Integer storedRetryAfter = retryAfter == null || !RetryClassifier.honoursRetryAfter(result.statusCode())
+                ? null
+                : (int) Math.min(retryAfter.toSeconds(), Integer.MAX_VALUE);
         AttemptRecord attempt = new AttemptRecord(
                 result.outcome().name(),
-                null,
+                success ? null : RetryClassifier.isRetryable(result.outcome(), result.statusCode()),
                 result.statusCode(),
                 result.responseHeaders().isEmpty() ? null : objectMapper.writeValueAsString(result.responseHeaders()),
                 result.responseBodyExcerpt(),
                 result.errorMessage(),
-                null,
+                storedRetryAfter,
                 (int) Math.min(result.durationMs(), Integer.MAX_VALUE));
 
         boolean applied = Boolean.TRUE.equals(tx.execute(status -> {
             deliveries.finishAttempt(claim.attemptId(), success ? "SUCCEEDED" : "FAILED", attempt);
-            if (success) {
-                return deliveries.markDelivered(claim, result.statusCode());
-            }
-            // Stage 1 has no retry policy yet: every delivery has a budget of one attempt.
-            DeadLetterReason reason = result.outcome() == AttemptOutcome.DESTINATION_BLOCKED
-                    ? DeadLetterReason.DESTINATION_BLOCKED
-                    : DeadLetterReason.RETRIES_EXHAUSTED;
-            return deliveries.markDeadLettered(claim, reason, result.statusCode(), error);
+            return switch (decision) {
+                case Decision.Deliver d -> deliveries.markDelivered(claim, result.statusCode());
+                case Decision.Retry r -> deliveries.markRetrying(claim, r.delay(), result.statusCode(), error);
+                case Decision.DeadLetter dl -> deliveries.markDeadLettered(claim, dl.reason(), result.statusCode(), error);
+            };
         }));
         if (!applied) {
             log.warn("Discarded result for delivery {} attempt {}: lease no longer held (stale worker)",
                     claim.deliveryId(), claim.attemptNumber());
         } else {
-            log.info("Delivery {} attempt {} -> {} ({} ms)", claim.deliveryId(), claim.attemptNumber(),
-                    result.outcome(), result.durationMs());
+            log.info("Delivery {} attempt {}/{} -> {} ({} ms): {}", claim.deliveryId(), claim.attemptNumber(),
+                    claim.maxAttempts(), result.outcome(), result.durationMs(), describe(decision));
         }
+    }
+
+    private static String describe(Decision decision) {
+        return switch (decision) {
+            case Decision.Deliver d -> "delivered";
+            case Decision.Retry r -> "retry in " + r.delay().toMillis() + " ms";
+            case Decision.DeadLetter dl -> "dead-lettered (" + dl.reason() + ")";
+        };
     }
 
     private static String errorSummary(HttpAttemptResult result) {

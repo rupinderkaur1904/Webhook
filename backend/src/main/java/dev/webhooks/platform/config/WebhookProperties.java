@@ -15,6 +15,7 @@ public record WebhookProperties(
         @DefaultValue Secrets secrets,
         @DefaultValue Worker worker,
         @DefaultValue Delivery delivery,
+        @DefaultValue Retry retry,
         @DefaultValue Ssrf ssrf) {
 
     /** Optional account and API key created at startup, for local use before sign-up exists. */
@@ -34,8 +35,27 @@ public record WebhookProperties(
     public record Delivery(
             @DefaultValue("5s") Duration connectTimeout,
             @DefaultValue("15s") Duration responseTimeout,
-            @DefaultValue("2048") int storedResponseBodyBytes,
-            @DefaultValue("1") int maxAttempts) {}
+            @DefaultValue("2048") int storedResponseBodyBytes) {}
+
+    /**
+     * Retry policy. {@code maxAttempts} is snapshotted onto each delivery when it is created, so a
+     * configuration change never alters the budget of work already queued.
+     */
+    public record Retry(
+            @DefaultValue("8") int maxAttempts,
+            @DefaultValue("30s") Duration baseDelay,
+            @DefaultValue("1h") Duration maxDelay,
+            @DefaultValue("6h") Duration maxRetryAfter) {
+
+        public Retry {
+            if (maxAttempts < 1 || maxAttempts > 50) {
+                throw new IllegalArgumentException("webhooks.retry.max-attempts must be between 1 and 50");
+            }
+            if (baseDelay.isNegative() || baseDelay.isZero() || maxDelay.compareTo(baseDelay) < 0) {
+                throw new IllegalArgumentException("webhooks.retry delays must be positive and max-delay >= base-delay");
+            }
+        }
+    }
 
     /**
      * Exact {@code host} or {@code host:port} entries that may be delivered to even though they

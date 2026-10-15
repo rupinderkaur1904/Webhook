@@ -59,6 +59,7 @@ public class ReceiverController {
             Thread.sleep(behaviour.delayMs());
         }
         return ResponseEntity.status(behaviour.status())
+                .headers(h -> behaviour.headers().forEach(h::set))
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(Map.of("receiver", name, "sequence", recorded.sequence(), "duplicate", recorded.duplicate(),
                         "signature", signature));

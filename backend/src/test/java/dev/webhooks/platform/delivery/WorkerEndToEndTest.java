@@ -12,6 +12,7 @@ import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import tools.jackson.databind.ObjectMapper;
@@ -22,6 +23,8 @@ import tools.jackson.databind.ObjectMapper;
  */
 @IntegrationTest
 @TestPropertySource(properties = "webhooks.worker.enabled=true")
+// Close this context afterwards so its running worker cannot claim deliveries created by other tests.
+@DirtiesContext
 class WorkerEndToEndTest {
 
     @Autowired MockMvc mvc;

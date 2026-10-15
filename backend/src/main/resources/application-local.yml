@@ -12,3 +12,9 @@ webhooks:
       - localhost:9090
       - 127.0.0.1:9090
       - simulator:9090
+  # Short delays so retries and exhaustion can be watched live in a demo.
+  retry:
+    max-attempts: 4
+    base-delay: 2s
+    max-delay: 20s
+    max-retry-after: 60s

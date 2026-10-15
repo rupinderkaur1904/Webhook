@@ -50,6 +50,16 @@ class ReceiverControllerTest {
     }
 
     @Test
+    void addsConfiguredResponseHeaders() throws Exception {
+        mvc.perform(put("/receivers/d/config").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":429,\"delayMs\":0,\"headers\":{\"Retry-After\":\"7\"}}"))
+                .andExpect(status().isOk());
+        mvc.perform(post("/receivers/d").content("{}"))
+                .andExpect(status().isTooManyRequests())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Retry-After", "7"));
+    }
+
+    @Test
     void rejectsInvalidConfiguration() throws Exception {
         mvc.perform(put("/receivers/c/config").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"status\":42,\"delayMs\":0}"))

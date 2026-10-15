@@ -27,9 +27,16 @@ public class ReceiverRegistry {
         receivers.remove(name);
     }
 
-    /** How a receiver responds. {@code secret} enables signature verification. */
-    public record Behaviour(int status, long delayMs, String secret) {
-        static final Behaviour DEFAULT = new Behaviour(200, 0, null);
+    /**
+     * How a receiver responds. {@code secret} enables signature verification; {@code headers} are
+     * added to every response (e.g. {@code Retry-After}).
+     */
+    public record Behaviour(int status, long delayMs, String secret, Map<String, String> headers) {
+        static final Behaviour DEFAULT = new Behaviour(200, 0, null, Map.of());
+
+        public Behaviour {
+            headers = headers == null ? Map.of() : Map.copyOf(headers);
+        }
     }
 
     public record ReceivedRequest(

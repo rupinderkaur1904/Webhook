@@ -13,7 +13,7 @@ import org.junit.jupiter.api.Test;
 class SecretCipherTest {
 
     private static SecretCipher cipher(String key) {
-        return new SecretCipher(new WebhookProperties(null, new WebhookProperties.Secrets(key), null, null, null));
+        return new SecretCipher(new WebhookProperties(null, new WebhookProperties.Secrets(key), null, null, null, null));
     }
 
     private final SecretCipher cipher = cipher(Base64.getEncoder().encodeToString(new byte[32]));
