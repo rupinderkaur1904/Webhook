@@ -37,6 +37,12 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         return header != null && header.regionMatches(true, 0, "Bearer ", 0, 7);
     }
 
+    /** The metrics endpoint has its own bearer token ({@link MetricsTokenFilter}). */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return MetricsTokenFilter.PATH.equals(request.getRequestURI());
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {

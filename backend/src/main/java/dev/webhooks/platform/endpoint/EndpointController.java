@@ -1,6 +1,9 @@
 package dev.webhooks.platform.endpoint;
 
 import dev.webhooks.platform.auth.AccountPrincipal;
+import dev.webhooks.platform.circuit.CircuitService;
+import dev.webhooks.platform.common.TimeWindow;
+import dev.webhooks.platform.health.EndpointHealth;
 import dev.webhooks.platform.endpoint.EndpointDtos.CreateEndpointRequest;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointCreatedResponse;
 import dev.webhooks.platform.endpoint.EndpointDtos.EndpointListResponse;
@@ -22,6 +25,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -30,10 +34,12 @@ public class EndpointController {
 
     private final EndpointService endpoints;
     private final IngestionService ingestion;
+    private final CircuitService circuits;
 
-    public EndpointController(EndpointService endpoints, IngestionService ingestion) {
+    public EndpointController(EndpointService endpoints, IngestionService ingestion, CircuitService circuits) {
         this.endpoints = endpoints;
         this.ingestion = ingestion;
+        this.circuits = circuits;
     }
 
     @PostMapping
@@ -49,7 +55,7 @@ public class EndpointController {
 
     @GetMapping("/{id}")
     EndpointResponse get(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id) {
-        return EndpointResponse.from(endpoints.get(principal.accountId(), id));
+        return endpoints.response(principal.accountId(), endpoints.get(principal.accountId(), id));
     }
 
     @PatchMapping("/{id}")
@@ -62,6 +68,20 @@ public class EndpointController {
     ResponseEntity<Void> delete(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id) {
         endpoints.delete(principal.accountId(), id);
         return ResponseEntity.noContent().build();
+    }
+
+    /** Health over {@code window} (1h, 24h or 7d): status, attempts, success rate, latency, last success and failure. */
+    @GetMapping("/{id}/health")
+    EndpointHealth health(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id,
+            @RequestParam(defaultValue = "24h") String window) {
+        return endpoints.health(principal.accountId(), id, TimeWindow.parse(window));
+    }
+
+    /** Closes the endpoint's circuit by hand, so its queued deliveries are sent again right away. */
+    @PostMapping("/{id}/circuit/reset")
+    EndpointResponse resetCircuit(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID id) {
+        circuits.reset(principal.accountId(), id);
+        return endpoints.response(principal.accountId(), endpoints.get(principal.accountId(), id));
     }
 
     @PostMapping("/{id}/rotate-secret")

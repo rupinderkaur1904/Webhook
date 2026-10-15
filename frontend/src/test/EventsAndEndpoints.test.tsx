@@ -5,7 +5,7 @@ import type { EventDetail } from '../api/types';
 import { EndpointDetailPage } from '../pages/EndpointDetailPage';
 import { EventDetailPage } from '../pages/EventDetailPage';
 import { EventsPage } from '../pages/EventsPage';
-import { deadLetter, delivered, endpoint } from './fixtures';
+import { deadLetter, delivered, endpoint, healthy } from './fixtures';
 import { fetchedUrls, jsonResponse, mockApi, renderAt } from './render';
 
 describe('EventsPage', () => {
@@ -71,6 +71,7 @@ describe('EndpointDetailPage', () => {
     const fetchMock = mockApi({
       [`/api/v1/endpoints/${endpoint.id}`]: (_url: string, init?: RequestInit) =>
         jsonResponse(init?.method === 'PATCH' ? { ...endpoint, enabled: false } : endpoint),
+      [`/api/v1/endpoints/${endpoint.id}/health`]: healthy,
       '/api/v1/deliveries': { items: [deadLetter], nextCursor: null },
     });
     renderAt(`/endpoints/${endpoint.id}`, '/endpoints/:id', <EndpointDetailPage />);

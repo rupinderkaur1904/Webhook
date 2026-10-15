@@ -943,3 +943,17 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **Log masking** is a `%replace` in the console pattern. Stage 6 moves to structured logging and must keep an equivalent mask.
 - **SSRF matrix:** the cases in §11 were already covered by Stage 1 tests (`DestinationPolicyTest`, `AddressPolicyTest`, send-time loopback resolution, redirects). Stage 5 adds no new SSRF code.
 - **Frontend:** the API-key "connect" screen is replaced by email and password sign-in. A 401 anywhere returns to the sign-in page; a stale CSRF token is refreshed and the request retried once. New: API keys page, secret rotation on endpoint detail. The dev and preview proxies forward `/api/` (with the slash) so the dashboard's own `/api-keys` route is not proxied.
+
+**Stage 6**
+- **Circuit breaker** as in §7.5, with these refinements:
+  - A non-retryable answer (for example `400`) ends a failure streak while closed, not only a 2xx: it proves the endpoint is reachable, and the plan already treats it that way for the probe.
+  - `429` and blocked destinations are neutral everywhere. A probe answered with `429` stays the probe and is retried at its `Retry-After`.
+  - The maintenance loop (the reaper's job) also re-picks a probe when a half-open circuit's probe has ended without deciding (cancelled, dead-lettered after repeated `429`s), so no state needs manual action. Circuits with nothing due stay waiting.
+  - A worker result discarded because its lease expired does not count: the attempt was abandoned by the platform, not failed by the endpoint.
+  - The circuit's state is updated under a row lock in the same transaction as the attempt result (`circuit_open_count` and `half_open_probe_id` were already in the V1 schema). Migration V5 only adds indexes for probe selection, per-endpoint dead letters and the maintenance loop.
+  - A successful probe resets `circuit_open_count`, so the next outage starts again at the base cool-down.
+- **Health** follows the table in §7.5. The window is selectable (`1h`, `24h` default, `7d`) on `GET /endpoints/{id}/health` and on the overview, which now includes `endpointHealth` (worst first). Last success and last failure are reported over all time, not only the window, because "when did this last work?" is the question they answer. `FAILING after 5` is configurable as `webhooks.circuit.failing-after`.
+- **Metrics:** Micrometer with the Prometheus registry. The scrape endpoint needs a static bearer token (`METRICS_TOKEN`, at least 24 characters); without one it is closed. Queue gauges are read from PostgreSQL so every instance agrees, from one query cached for 5s, and report `NaN` if the database is unreachable.
+- **Structured logging:** Spring Boot's built-in structured logging, switched on with `LOG_FORMAT=ecs` (or `logstash`). A JSON members customizer applies the same `whsec_`/`whk_` mask as the plain-text pattern. Delivery processing puts `deliveryId`, `eventId`, `endpointId`, `accountId` and `attempt` in the MDC.
+- **Demo:** `scripts/demo.sh breaker`. The local profile uses a 5s base cool-down. Every demo run now deletes endpoints left by older runs beyond the newest 20, because the 50-endpoint cap from Stage 5 was reached after many runs.
+

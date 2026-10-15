@@ -6,6 +6,7 @@ import { errorMessage } from '../api/client';
 import { useDeliveries, useEndpoint, useRotateSecret, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
 import type { Endpoint, SecretRotated } from '../api/types';
 import { DeliveriesTable } from '../components/DeliveriesTable';
+import { EndpointHealthCard } from '../components/EndpointHealthCard';
 import { Field } from '../components/Field';
 import { EmptyState, QueryState } from '../components/QueryState';
 import { Time } from '../components/Time';
@@ -159,6 +160,7 @@ export function EndpointDetailPage() {
                 </Field>
               </SimpleGrid>
             </Card>
+            <EndpointHealthCard endpoint={e} />
             <Group justify="space-between">
               <Title order={4}>Deliveries to this endpoint</Title>
               <Anchor component={Link} to={`/dead-letters?endpointId=${e.id}`} size="sm">

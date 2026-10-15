@@ -1,5 +1,6 @@
 package dev.webhooks.platform.endpoint;
 
+import dev.webhooks.platform.circuit.CircuitView;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -15,5 +16,6 @@ public record Endpoint(
         boolean enabled,
         String secretPrefix,
         Instant previousSecretExpiresAt,
+        CircuitView circuit,
         Instant createdAt,
         Instant updatedAt) {}

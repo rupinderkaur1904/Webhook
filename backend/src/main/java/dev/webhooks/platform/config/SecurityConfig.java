@@ -6,6 +6,7 @@ import static dev.webhooks.platform.auth.AccountPrincipal.ROLE_USER;
 import dev.webhooks.platform.auth.ApiKeyAuthenticationFilter;
 import dev.webhooks.platform.auth.ApiKeyRepository;
 import dev.webhooks.platform.auth.CsrfCookieFilter;
+import dev.webhooks.platform.auth.MetricsTokenFilter;
 import dev.webhooks.platform.auth.ProblemAccessDeniedHandler;
 import dev.webhooks.platform.auth.ProblemAuthenticationEntryPoint;
 import java.util.Map;
@@ -53,8 +54,8 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain apiSecurity(HttpSecurity http, ApiKeyRepository apiKeys, ObjectMapper objectMapper,
-            CookieCsrfTokenRepository csrfTokenRepository, SecurityContextRepository securityContextRepository)
-            throws Exception {
+            CookieCsrfTokenRepository csrfTokenRepository, SecurityContextRepository securityContextRepository,
+            WebhookProperties properties) throws Exception {
         var entryPoint = new ProblemAuthenticationEntryPoint(objectMapper);
         // Plain (non-XOR) handler: the SPA echoes the cookie value in X-XSRF-TOKEN. BREACH masking only
         // matters for tokens rendered into compressed HTML, which this API never does.
@@ -80,8 +81,10 @@ public class SecurityConfig {
                         .frameOptions(f -> f.deny())
                         .referrerPolicy(r -> r.policy(ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)))
                 .addFilterBefore(new ApiKeyAuthenticationFilter(apiKeys, entryPoint), AnonymousAuthenticationFilter.class)
+                .addFilterBefore(new MetricsTokenFilter(properties.metrics().token()), ApiKeyAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, MetricsTokenFilter.PATH).hasAuthority(MetricsTokenFilter.ROLE_METRICS)
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/register").permitAll()

@@ -127,7 +127,8 @@ public class MetricsRepository {
                         current.getOrDefault("IN_FLIGHT", 0L)),
                 rate(totals.succeeded(), totals.succeeded() + deadLettered),
                 attempts,
-                recent);
+                recent,
+                List.of());
     }
 
     static Double rate(long numerator, long denominator) {

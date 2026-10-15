@@ -20,7 +20,9 @@ public record WebhookProperties(
         @DefaultValue Replay replay,
         @DefaultValue Auth auth,
         @DefaultValue Limits limits,
-        @DefaultValue RateLimit rateLimit) {
+        @DefaultValue RateLimit rateLimit,
+        @DefaultValue Circuit circuit,
+        @DefaultValue Metrics metrics) {
 
     public WebhookProperties {
         if (worker != null && delivery != null) {
@@ -113,4 +115,44 @@ public record WebhookProperties(
             @DefaultValue("50") int ingestPerSecond,
             @DefaultValue("100") int ingestBurst,
             @DefaultValue("5") int loginPerMinute) {}
+
+    /**
+     * Per-endpoint circuit breaker (docs/PLAN.md §7.5). {@code failureThreshold} consecutive retryable
+     * failures (429 excluded) open the circuit for {@code baseCooldown × 2^(times opened)}, capped at
+     * {@code maxCooldown}. Endpoint health reports {@code FAILING} from {@code failingAfter} consecutive
+     * failures.
+     */
+    public record Circuit(
+            @DefaultValue("true") boolean enabled,
+            @DefaultValue("10") int failureThreshold,
+            @DefaultValue("30s") Duration baseCooldown,
+            @DefaultValue("30m") Duration maxCooldown,
+            @DefaultValue("5") int failingAfter) {
+
+        public Circuit {
+            if (failureThreshold < 1) {
+                throw new IllegalArgumentException("webhooks.circuit.failure-threshold must be at least 1");
+            }
+            if (baseCooldown.isNegative() || baseCooldown.isZero() || maxCooldown.compareTo(baseCooldown) < 0) {
+                throw new IllegalArgumentException("webhooks.circuit cool-downs must be positive and max-cooldown >= base-cooldown");
+            }
+        }
+    }
+
+    /**
+     * Prometheus scraping. {@code GET /actuator/prometheus} requires {@code Authorization: Bearer <token>};
+     * without a token configured the endpoint refuses every request.
+     */
+    public record Metrics(String token) {
+
+        public Metrics {
+            if (token != null && !token.isBlank() && token.length() < 24) {
+                throw new IllegalArgumentException("webhooks.metrics.token (METRICS_TOKEN) must be at least 24 characters");
+            }
+        }
+
+        public boolean scrapingEnabled() {
+            return token != null && !token.isBlank();
+        }
+    }
 }

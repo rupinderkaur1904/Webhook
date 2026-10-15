@@ -10,6 +10,8 @@ import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
 import dev.webhooks.platform.event.EventDtos.EventDetail;
 import dev.webhooks.platform.event.EventDtos.EventSummary;
 import dev.webhooks.platform.ratelimit.RateLimiter;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
@@ -36,14 +38,20 @@ public class EventController {
     private final DeliveryQueryRepository deliveries;
     private final ObjectMapper objectMapper;
     private final RateLimiter rateLimiter;
+    private final Counter accepted;
+    private final Counter replayed;
+    private final Counter deliveriesCreated;
 
     public EventController(IngestionService ingestion, EventRepository events, DeliveryQueryRepository deliveries,
-            ObjectMapper objectMapper, RateLimiter rateLimiter) {
+            ObjectMapper objectMapper, RateLimiter rateLimiter, MeterRegistry meters) {
         this.ingestion = ingestion;
         this.events = events;
         this.deliveries = deliveries;
         this.objectMapper = objectMapper;
         this.rateLimiter = rateLimiter;
+        this.accepted = meters.counter("webhooks.events.received", "result", "accepted");
+        this.replayed = meters.counter("webhooks.events.received", "result", "idempotent_replay");
+        this.deliveriesCreated = meters.counter("webhooks.deliveries.created");
     }
 
     /**
@@ -60,8 +68,11 @@ public class EventController {
         rateLimiter.checkIngest(principal.credentialId());
         var result = ingestion.ingest(principal.accountId(), idempotencyKey, request);
         if (result.replayed()) {
+            replayed.increment();
             return ResponseEntity.ok().header("Idempotent-Replayed", "true").body(result.response());
         }
+        accepted.increment();
+        deliveriesCreated.increment(result.response().deliveries().size());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result.response());
     }
 

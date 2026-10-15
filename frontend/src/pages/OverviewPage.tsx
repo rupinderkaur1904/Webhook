@@ -5,6 +5,7 @@ import { useOverview } from '../api/hooks';
 import type { DeadLetterReason, MetricsWindow } from '../api/types';
 import { DEAD_LETTER_REASONS, percent, shortId } from '../components/labels';
 import { EmptyState, QueryState } from '../components/QueryState';
+import { CircuitBadge, HealthBadge } from '../components/StatusBadge';
 import { Time } from '../components/Time';
 
 const WINDOWS: MetricsWindow[] = ['1h', '24h', '7d'];
@@ -96,6 +97,67 @@ export function OverviewPage() {
             <Text size="xs" c="dimmed">
               Window <Time value={o.windowStart} /> to <Time value={o.windowEnd} />. Refreshes every 5 s.
             </Text>
+            <Title order={4}>Endpoint health</Title>
+            {o.endpointHealth.length === 0 ? (
+              <EmptyState title="No endpoints yet">Register an endpoint to see its health here.</EmptyState>
+            ) : (
+              <Table.ScrollContainer minWidth={700}>
+                <Table striped>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Endpoint</Table.Th>
+                      <Table.Th>Health</Table.Th>
+                      <Table.Th>Attempt success</Table.Th>
+                      <Table.Th>p95 latency</Table.Th>
+                      <Table.Th>Dead letters</Table.Th>
+                      <Table.Th>Last failure</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {o.endpointHealth.map((item) => (
+                      <Table.Tr key={item.endpointId}>
+                        <Table.Td>
+                          <Anchor component={Link} to={`/endpoints/${item.endpointId}`} size="sm">
+                            {item.name}
+                          </Anchor>
+                        </Table.Td>
+                        <Table.Td>
+                          <Group gap={6} wrap="nowrap">
+                            <HealthBadge status={item.health.status} />
+                            {item.circuit.state !== 'CLOSED' && <CircuitBadge state={item.circuit.state} />}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          {percent(item.health.successRate)}
+                          {item.health.attempts > 0 && (
+                            <Text span size="xs" c="dimmed">
+                              {' '}
+                              of {item.health.attempts}
+                            </Text>
+                          )}
+                        </Table.Td>
+                        <Table.Td>{item.health.latencyP95Ms == null ? '—' : `${item.health.latencyP95Ms} ms`}</Table.Td>
+                        <Table.Td>{item.health.deadLetters}</Table.Td>
+                        <Table.Td>
+                          {item.health.lastFailure ? (
+                            <Text size="sm">
+                              <Time value={item.health.lastFailure.at} />{' '}
+                              <Text span size="xs" c="dimmed">
+                                {item.health.lastFailure.responseStatus != null
+                                  ? `HTTP ${item.health.lastFailure.responseStatus}`
+                                  : item.health.lastFailure.outcome}
+                              </Text>
+                            </Text>
+                          ) : (
+                            '—'
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
             <Title order={4}>Recent attempts</Title>
             {o.recentActivity.length === 0 ? (
               <EmptyState title="No delivery attempts yet">Send a test event from an endpoint to see activity here.</EmptyState>

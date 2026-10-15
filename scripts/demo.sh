@@ -22,6 +22,9 @@
 #                 (override CRASH_CMD / START_CMD, e.g. "docker compose kill app" / "docker compose start app")
 #   rotation      rotate the signing secret with a grace period: deliveries carry both signatures and
 #                 the receiver accepts either secret
+#   breaker       receiver always 500: 10 failures open the endpoint's circuit, 10 more events stay
+#                 queued without using their retry budget; fix the receiver, a probe closes the
+#                 circuit and the backlog drains (local profile: 5s cool-down)
 #   security      anonymous 401, API key 403 on management, missing CSRF 403, oversized body 413,
 #                 then repeated bad logins 429 (this throttles logins from this address for a minute)
 #
@@ -35,6 +38,7 @@ SIM_FROM_API="${SIMULATOR_URL_FROM_API:-http://localhost:9090}"   # how the back
 KEY="${API_KEY:-whk_local_dev_key_0000000000000000000000}"
 EMAIL="${DASHBOARD_EMAIL:-dev@localhost}"
 PASSWORD="${DASHBOARD_PASSWORD:-local-dev-password}"
+METRICS="${METRICS_TOKEN:-local-dev-metrics-token-00000000}"
 SCENARIO="${1:-success}"
 RUN="$(date +%s)-$RANDOM"
 RECEIVER="demo-$SCENARIO-$RUN"
@@ -104,6 +108,12 @@ submit_one() {  # submits an event and sets DELIVERY
 step "Sign in as $EMAIL (dashboard session for endpoint management)"
 sign_in
 echo "session cookie stored; CSRF token $(xsrf | cut -c1-8)..."
+# Each run registers an endpoint and an account may have 50: keep the 20 newest from earlier demo runs.
+old_endpoints=$(manage -sf "$API/api/v1/endpoints" | jq -r '[.items[] | select(.name | startswith("demo-"))] | .[20:] | .[].id')
+if [[ -n "$old_endpoints" ]]; then
+  for id in $old_endpoints; do manage -sf -X DELETE "$API/api/v1/endpoints/$id" >/dev/null; done
+  echo "deleted $(wc -w <<<"$old_endpoints") endpoints left by older demo runs"
+fi
 
 step "Register endpoint for simulator receiver '$RECEIVER'"
 created=$(manage -sf "${json[@]}" -X POST "$API/api/v1/endpoints" \
@@ -118,6 +128,7 @@ case "$SCENARIO" in
   rate-limit)   receiver '{"status":200,"script":[{"status":429,"headers":{"Retry-After":"5"}}]}' ;;
   timeout)      receiver '{"status":200,"script":[{"status":200,"delayMs":8000}]}' ;;
   exhaust|replay) receiver '{"status":503}' ;;
+  breaker)      receiver '{"status":500}' ;;
   permanent)    receiver '{"status":400}' ;;
   intermittent) receiver '{"status":200,"failureRate":0.5,"failureStatus":503,"seed":7}' ;;
   crash)        receiver '{"status":200,"script":[{"status":200,"delayMs":4000}]}' ;;
@@ -142,6 +153,45 @@ if [[ "$SCENARIO" == "intermittent" ]]; then
   curl -sf "$SIM/receivers/$RECEIVER/requests" |
     jq -c '{requests: length, answered: (group_by(.respondedWith) | map({key: (.[0].respondedWith|tostring), value: length}) | from_entries),
             retriesSeenAsDuplicateWebhookIds: (map(select(.duplicate)) | length)}'
+  exit 0
+fi
+
+if [[ "$SCENARIO" == "breaker" ]]; then
+  circuit() { manage -sf "$API/api/v1/endpoints/$ENDPOINT" | jq -c '{circuit: .circuit.state, consecutiveFailures: .circuit.consecutiveFailures, retryAt: .circuit.retryAt, health: .health.status}'; }
+  wait_circuit() {  # wait_circuit <state> <timeout-seconds>
+    local deadline=$((SECONDS + $2))
+    until manage -sf "$API/api/v1/endpoints/$ENDPOINT" | jq -e --arg s "$1" '.circuit.state == $s' >/dev/null; do
+      (( SECONDS < deadline )) || { echo "circuit did not reach $1 within $2s" >&2; circuit >&2; exit 1; }
+      sleep 0.5
+    done
+  }
+  by_status() {
+    curl -sf "${auth[@]}" "$API/api/v1/deliveries?endpointId=$ENDPOINT&limit=100" |
+      jq -c '.items as $d | {deliveries: ($d | length), byStatus: ($d | group_by(.status) | map({key: .[0].status, value: length}) | from_entries),
+              attemptsUsed: ($d | map(.attemptCount) | add), maxAttemptsEach: $d[0].maxAttempts}'
+  }
+  step "Submit 10 events (the receiver answers 500 to everything)"
+  for i in $(seq 1 10); do submit "order-$RUN-$i" "{\"orderId\":\"ord_$RUN-$i\"}" >/dev/null; done
+  step "Wait for 10 consecutive failures to open the circuit"
+  wait_circuit OPEN 30
+  circuit
+  step "Submit 10 more events while the circuit is open"
+  for i in $(seq 11 20); do submit "order-$RUN-$i" "{\"orderId\":\"ord_$RUN-$i\"}" >/dev/null; done
+  sleep 3
+  by_status
+  echo "receiver requests so far: $(curl -sf "$SIM/receivers/$RECEIVER/requests" | jq length) (only probes reach it while open)"
+  step "Fix the receiver; after the cool-down one probe delivery is sent"
+  receiver '{"status":200}'
+  wait_circuit CLOSED 90
+  circuit
+  step "Probe succeeded: the backlog drains"
+  for _ in $(seq 1 120); do
+    by_status | jq -e '.byStatus.DELIVERED == 20' >/dev/null && break
+    sleep 0.5
+  done
+  by_status
+  step "Circuit transitions as Prometheus sees them (GET /actuator/prometheus with the scrape token)"
+  curl -sf -H "Authorization: Bearer $METRICS" "$API/actuator/prometheus" | grep -E '^webhooks_circuit_transitions_total' || true
   exit 0
 fi
 
