@@ -5,25 +5,56 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 /** In-memory named receivers, each with its own behaviour and request log. */
 @Component
 public class ReceiverRegistry {
 
-    static final int MAX_LOGGED_REQUESTS = 500;
+    static final int MAX_LOGGED_REQUESTS = 200;
+    /** Logged bodies are cut to this many characters (signatures are checked on the full body first). */
+    static final int MAX_LOGGED_BODY_CHARS = 8 * 1024;
+    /** Remembered webhook-ids per receiver, for duplicate detection. */
+    static final int MAX_REMEMBERED_IDS = 10_000;
+    private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_-]{1,64}");
     static final int MAX_SCRIPT_STEPS = 100;
     static final long MAX_DELAY_MS = 120_000;
 
     private final Map<String, Receiver> receivers = new ConcurrentHashMap<>();
+    private final int maxReceivers;
 
+    /** {@code simulator.max-receivers} bounds memory on a publicly reachable simulator. */
+    public ReceiverRegistry(@Value("${simulator.max-receivers:50}") int maxReceivers) {
+        this.maxReceivers = maxReceivers;
+    }
+
+    /** The named receiver, created on first use. Names are 1-64 letters, digits, '-' or '_'. */
     public Receiver get(String name) {
-        return receivers.computeIfAbsent(name, n -> new Receiver());
+        if (name == null || !NAME.matcher(name).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "receiver names are 1-64 letters, digits, '-' or '_'");
+        }
+        Receiver existing = receivers.get(name);
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (receivers) {
+            if (!receivers.containsKey(name) && receivers.size() >= maxReceivers) {
+                throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
+                        "the simulator holds at most " + maxReceivers + " receivers; delete one first");
+            }
+            return receivers.computeIfAbsent(name, n -> new Receiver());
+        }
     }
 
     public void reset(String name) {
@@ -116,7 +147,7 @@ public class ReceiverRegistry {
         private int scriptPosition;
         private Random random = new Random();
         private final Deque<ReceivedRequest> log = new ArrayDeque<>();
-        private final Set<String> seenWebhookIds = new HashSet<>();
+        private final Set<String> seenWebhookIds = new LinkedHashSet<>();
         private int sequence;
 
         public synchronized Behaviour behaviour() {
@@ -150,8 +181,13 @@ public class ReceiverRegistry {
         public synchronized ReceivedRequest record(Instant at, String webhookId, String deliveryId, String attempt,
                 String signatureResult, Response response, Map<String, String> headers, String body) {
             boolean duplicate = webhookId != null && !seenWebhookIds.add(webhookId);
+            if (seenWebhookIds.size() > MAX_REMEMBERED_IDS) {
+                seenWebhookIds.remove(seenWebhookIds.iterator().next());
+            }
+            String logged = body != null && body.length() > MAX_LOGGED_BODY_CHARS
+                    ? body.substring(0, MAX_LOGGED_BODY_CHARS) + "…[truncated]" : body;
             ReceivedRequest request = new ReceivedRequest(++sequence, at, webhookId, deliveryId, attempt,
-                    signatureResult, duplicate, response.status(), response.rule(), headers, body);
+                    signatureResult, duplicate, response.status(), response.rule(), headers, logged);
             log.addLast(request);
             while (log.size() > MAX_LOGGED_REQUESTS) {
                 log.removeFirst();

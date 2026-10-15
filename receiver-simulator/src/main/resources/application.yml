@@ -3,3 +3,7 @@ server:
 spring:
   application:
     name: receiver-simulator
+simulator:
+  # Required before the simulator is reachable from the internet (see PublicExposureFilter).
+  control-token: ${SIMULATOR_CONTROL_TOKEN:}
+  max-receivers: ${SIMULATOR_MAX_RECEIVERS:50}

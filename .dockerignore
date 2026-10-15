@@ -1,0 +1,12 @@
+.git
+.github
+**/target
+**/node_modules
+frontend/dist
+frontend/tsconfig.tsbuildinfo
+frontend/test-results
+frontend/playwright-report
+docs
+scripts
+*.md
+.env

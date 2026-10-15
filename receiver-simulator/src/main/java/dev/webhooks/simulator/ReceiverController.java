@@ -13,7 +13,9 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +36,12 @@ public class ReceiverController {
 
     public ReceiverController(ReceiverRegistry registry) {
         this.registry = registry;
+    }
+
+    /** Liveness for the container health check and the hosting platform. */
+    @GetMapping("/healthz")
+    Map<String, String> health() {
+        return Map.of("status", "UP");
     }
 
     @PostMapping("/receivers/{name}")
@@ -110,5 +118,16 @@ public class ReceiverController {
     ResponseEntity<Void> reset(@PathVariable String name) {
         registry.reset(name);
         return ResponseEntity.noContent().build();
+    }
+
+    /** A chunked body that passed the 1 MB limit while being read; other unreadable bodies are 400. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<Void> unreadable(HttpMessageNotReadableException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof PublicExposureFilter.BodyTooLargeException) {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).build();
+            }
+        }
+        return ResponseEntity.badRequest().build();
     }
 }

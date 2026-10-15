@@ -35,6 +35,9 @@ set -euo pipefail
 API="${API_URL:-http://localhost:8080}"
 SIM="${SIMULATOR_URL:-http://localhost:9090}"
 SIM_FROM_API="${SIMULATOR_URL_FROM_API:-http://localhost:9090}"   # how the backend reaches the simulator
+# A publicly deployed simulator protects its control API with a token (SIMULATOR_CONTROL_TOKEN).
+simauth=()
+[[ -n "${SIMULATOR_CONTROL_TOKEN:-}" ]] && simauth=(-H "Authorization: Bearer $SIMULATOR_CONTROL_TOKEN")
 KEY="${API_KEY:-whk_local_dev_key_0000000000000000000000}"
 EMAIL="${DASHBOARD_EMAIL:-dev@localhost}"
 PASSWORD="${DASHBOARD_PASSWORD:-local-dev-password}"
@@ -65,7 +68,7 @@ command -v jq >/dev/null || { echo "jq is required" >&2; exit 1; }
 receiver() {  # receiver <behaviour-json>: status, delayMs, headers, script, failureRate, failureStatus, seed
   local config
   config=$(jq -c --arg secret "$SECRET" '. + {secret: $secret}' <<<"$1")
-  curl -sf "${json[@]}" -X PUT "$SIM/receivers/$RECEIVER/config" -d "$config" >/dev/null
+  curl -sf "${simauth[@]}" "${json[@]}" -X PUT "$SIM/receivers/$RECEIVER/config" -d "$config" >/dev/null
   echo "simulator behaviour: $1"
 }
 
@@ -88,7 +91,7 @@ show() {  # show [delivery-id]
 
 show_receiver() {
   step "Receiver's view (simulator request log)"
-  curl -sf "$SIM/receivers/$RECEIVER/requests" |
+  curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" |
     jq '[.[] | {at: .receivedAt, webhookId, deliveryId: .deliveryId[0:8], attempt, signatureResult, duplicateWebhookId: .duplicate, respondedWith, rule}]'
 }
 
@@ -150,7 +153,7 @@ if [[ "$SCENARIO" == "intermittent" ]]; then
     delivery "$id" | jq -c '{delivery: .delivery.id[0:8], status: .delivery.status, attempts: [.attempts[].responseStatus]}'
   done
   step "Receiver totals"
-  curl -sf "$SIM/receivers/$RECEIVER/requests" |
+  curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" |
     jq -c '{requests: length, answered: (group_by(.respondedWith) | map({key: (.[0].respondedWith|tostring), value: length}) | from_entries),
             retriesSeenAsDuplicateWebhookIds: (map(select(.duplicate)) | length)}'
   exit 0
@@ -179,7 +182,7 @@ if [[ "$SCENARIO" == "breaker" ]]; then
   for i in $(seq 11 20); do submit "order-$RUN-$i" "{\"orderId\":\"ord_$RUN-$i\"}" >/dev/null; done
   sleep 3
   by_status
-  echo "receiver requests so far: $(curl -sf "$SIM/receivers/$RECEIVER/requests" | jq length) (only probes reach it while open)"
+  echo "receiver requests so far: $(curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" | jq length) (only probes reach it while open)"
   step "Fix the receiver; after the cool-down one probe delivery is sent"
   receiver '{"status":200}'
   wait_circuit CLOSED 90
@@ -205,7 +208,7 @@ if [[ "$SCENARIO" == "crash" ]]; then
   step "Submit event (the receiver holds the first request for 4s)"
   submit_one
   wait_until '.delivery.status == "IN_FLIGHT"' 15
-  until curl -sf "$SIM/receivers/$RECEIVER/requests" | jq -e 'length >= 1' >/dev/null; do sleep 0.2; done
+  until curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" | jq -e 'length >= 1' >/dev/null; do sleep 0.2; done
   delivery | jq -c '{status: .delivery.status, lease: .lease, attempt: .attempts[0].status}'
   step "Crash the backend mid-request: $CRASH_CMD"
   eval "$CRASH_CMD"
@@ -255,7 +258,7 @@ if [[ "$SCENARIO" == "rotation" ]]; then
   submit_one
   wait_until '.delivery.status == "DELIVERED"' 15
   show
-  request=$(curl -sf "$SIM/receivers/$RECEIVER/requests" | jq '.[-1]')
+  request=$(curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" | jq '.[-1]')
   step "webhook-signature carries one signature per secret"
   jq -r '.headers["webhook-signature"] | split(" ") | .[]' <<<"$request"
   for label in old new; do
@@ -264,7 +267,7 @@ if [[ "$SCENARIO" == "rotation" ]]; then
     jq -n --arg secret "$secret" --argjson r "$request" \
       '{secret: $secret, webhookId: $r.headers["webhook-id"], webhookTimestamp: $r.headers["webhook-timestamp"],
         webhookSignature: $r.headers["webhook-signature"], body: $r.body}' |
-      curl -sf "${json[@]}" -X POST "$SIM/verify" -d @- | jq -r .result
+      curl -sf "${simauth[@]}" "${json[@]}" -X POST "$SIM/verify" -d @- | jq -r .result
   done
   step "Endpoint as the API shows it (no secret, only prefixes and the grace deadline)"
   manage -sf "$API/api/v1/endpoints/$ENDPOINT" | jq -c '{secretPrefix, previousSecretExpiresAt}'
@@ -328,12 +331,12 @@ if [[ "$SCENARIO" == "idempotency" ]]; then
 fi
 
 if [[ "$SCENARIO" == "signature" ]]; then
-  request=$(curl -sf "$SIM/receivers/$RECEIVER/requests" | jq '.[-1]')
+  request=$(curl -sf "${simauth[@]}" "$SIM/receivers/$RECEIVER/requests" | jq '.[-1]')
   verify() {  # verify <secret> <body>
     jq -n --arg secret "$1" --arg body "$2" --argjson r "$request" \
       '{secret: $secret, webhookId: $r.headers["webhook-id"], webhookTimestamp: $r.headers["webhook-timestamp"],
         webhookSignature: $r.headers["webhook-signature"], body: $body}' |
-      curl -sf "${json[@]}" -X POST "$SIM/verify" -d @- | jq -r .result
+      curl -sf "${simauth[@]}" "${json[@]}" -X POST "$SIM/verify" -d @- | jq -r .result
   }
   step "Headers the receiver got"
   jq '.headers | with_entries(select(.key | startswith("webhook-") or startswith("x-webhook")))' <<<"$request"
