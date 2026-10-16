@@ -49,6 +49,9 @@ Integration tests always run against real PostgreSQL. They cover:
   - 4 reapers recovering 250 expired leases exactly once;
   - a crashed replay recovered within its own chain;
   - graceful shutdown, both draining and past its deadline;
+  - audit fault injection: a late result racing the reaper (no deadlock, observation kept), an endpoint deleted while a retry is recorded, an undecryptable secret that neither blocks the queue nor loops, secret rotation and URL edits between claim and send, the circuit opening during an attempt;
+  - database outages seen by a real worker instance behind a cuttable TCP proxy: during claim, after the receiver accepted but before success was stored (at-least-once re-send), and while scheduling a retry;
+- end-to-end classification over real sockets: every status in the §7.4 table, DNS failure, a dropped connection, a connect timeout, `Retry-After` dates and invalid values, and a `2xx` whose body stalls (delivered, not timed out);
 - security:
   - the real login flow through the filter chain: CSRF bootstrap, a session row in PostgreSQL, a new session id on every login, logout revoking the session, the bcrypt-to-Argon2id upgrade, identical answers for a wrong password and an unknown email, registration on and off;
   - who may call what: anonymous `401` on every route, API keys `403` on every management route with nothing changed, CSRF required, a Bearer header that cannot be used to skip CSRF, cross-account `404` on every route that names a resource;
