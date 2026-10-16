@@ -2,13 +2,14 @@
 
 | Suite | Command | What it needs | Count (last run) |
 |---|---|---|---|
-| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 308 |
-| Receiver simulator | included in `./mvnw verify` | nothing | 21 |
+| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 543 |
+| Receiver simulator | included in `./mvnw verify` | nothing | 79 |
 | Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 36 |
 | API contract and generated types | `OpenApiContractTest` (in `verify`); `npm run gen:api && git diff --exit-code src/api/schema.ts` | | 1 |
-| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 8 |
+| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 18 |
 | Receiver examples | see [below](#receiver-examples) | Java 21, Node 22, Python 3 | 22 / 19 / 19 |
 | Compose demos | `scripts/demo.sh <scenario>` | the Compose stack, bash, `jq` | 14 scenarios |
+| Local load benchmark | `python3 scripts/bench.py` | the Compose stack, Python 3 | see [below](#local-load-benchmark) |
 
 CI (`.github/workflows/ci.yml`) runs all of them on every push: the backend and frontend jobs, the receiver examples, and a `compose` job that builds the real Docker images, starts them on an empty database, runs the delivery, retry, replay and crash demos, and runs the Playwright suite in a browser.
 
@@ -83,6 +84,21 @@ The Playwright suite (`frontend/e2e/`) drives a real browser against a running s
 7. a rotated secret is shown once, and during the grace period receivers on the old and on the new secret both verify;
 8. an endpoint registered with the simulator's base URL gets `HTTP 404` with a hint naming `/receivers/{name}`, is fixed with **Edit**, and the dead letter is replayed and verified.
 
+`e2e/scenarios.spec.ts` adds:
+
+9. unsafe or invalid endpoint URLs (metadata address, localhost, private range, not a URL) are refused in the dashboard;
+10. a `503` is retried after the jittered backoff (1–2 s locally) and the attempt history shows it;
+11. a `400` is dead-lettered after one attempt and never sent again;
+12. exhausted retries show all four attempts;
+13. the circuit breaker opens after 10 failures, holds new work without sending it, and drains the backlog once the receiver recovers;
+14. work queued while the application restarts is delivered afterwards (needs `E2E_RESTART_CMD`, for example `docker compose restart app`; skipped without it);
+15. anonymous callers get `401` on every protected route, and API keys get `403` on management routes;
+16. the overview shows delivery metrics and endpoint health;
+17. every dashboard route survives a full reload;
+18. a captured session cookie is useless after sign-out.
+
+The login limit is 5 a minute per address: wait a minute between full runs against the same stack.
+
 ```bash
 docker compose up -d --build          # from the repository root
 cd frontend
@@ -91,6 +107,19 @@ npm run e2e
 ```
 
 Environment variables (`E2E_BASE_URL`, `E2E_SIMULATOR_URL`, `E2E_SIMULATOR_FROM_APP`, `E2E_EMAIL`, `E2E_PASSWORD`, `E2E_API_KEY`, `E2E_SIMULATOR_TOKEN`) point the suite at another stack. Each test creates its own endpoint and receiver and deletes them afterwards. Failures keep a trace and a screenshot in `frontend/test-results/`.
+
+## Local load benchmark
+
+`scripts/bench.py` (Python standard library only) creates its own endpoints, simulator receivers and API keys, submits events from several threads, waits until every delivery has finished, prints a JSON summary (ingestion latency and rate, delivery completion latency, outcome counts, peak queue and connection-pool gauges) and removes what it created.
+
+```bash
+python3 scripts/bench.py --events 200 --endpoints 4 --concurrency 8 --keys 4            # smoke run
+python3 scripts/bench.py --events 2000 --endpoints 8 --concurrency 32 --keys 10
+python3 scripts/bench.py --events 1000 --endpoints 8 --concurrency 16 --keys 10 \
+    --receiver-delay-ms 50 --failure-rate 0.2
+```
+
+`--api`, `--sim`, `--email`, `--password`, `--metrics-token` and `--sim-token` point it at another stack. Ingestion is limited to 50 requests a second per API key, so `--keys` spreads the load. The numbers describe the machine they ran on, with the producer, platform, database and simulator sharing it; they are not a capacity statement. Results from the audit are in [AUDIT-REPORT.md](AUDIT-REPORT.md#performance).
 
 ## Receiver examples
 

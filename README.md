@@ -41,6 +41,7 @@ Open http://localhost:8080 and sign in with `dev@localhost` / `local-dev-passwor
 | [SECURITY.md](docs/SECURITY.md) | Security controls, trusted proxies, the public simulator, known trade-offs. |
 | [TESTING.md](docs/TESTING.md) | Every test suite, what it covers and how to run it. |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Fly.io + Neon deployment, trusted-proxy setup, configuration and operations. |
+| [AUDIT-REPORT.md](docs/AUDIT-REPORT.md) | Engineering audit of 2026-10-16: what was verified, defects fixed, remaining risks. |
 | [examples/receivers](examples/receivers) | Signature-verifying receivers in Java, Node.js and Python. |
 | [PLAN.md](docs/PLAN.md) | The original design and its decisions. |
 
