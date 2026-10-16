@@ -69,6 +69,8 @@ export async function registerEndpointInUi(page: Page, name: string, url: string
   await expect(row).toBeVisible();
   await row.getByRole('link', { name }).click();
   await expect(page).toHaveURL(/\/endpoints\/[0-9a-f-]{36}$/);
+  // The URL changes before the detail page replaces the list; wait for the page itself.
+  await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();
   const id = page.url().split('/').pop()!;
   return { id, secret };
 }
