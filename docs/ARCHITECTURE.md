@@ -127,7 +127,7 @@ Each endpoint has a circuit breaker, so a receiver that is down does not use up 
 | Health | Rule |
 |---|---|
 | `DISABLED` | The endpoint is disabled. |
-| `FAILING` | The circuit is open or half-open, or the last 5 attempts all failed. |
+| `FAILING` | The circuit is open or half-open, or its failure streak has reached 5 (`webhooks.circuit.failing-after`). The streak counts only failures that suggest the receiver is down, as for the circuit: `429`, non-retryable answers such as `400`, and blocked destinations do not count, so an endpoint answering only `429` shows `HEALTHY` until `DEGRADED` applies. |
 | `DEGRADED` | Attempt success rate under 90% with at least 10 attempts in the window, or any dead letter in the window. |
 | `HEALTHY` | At least one attempt in the window and none of the above. |
 | `NO_DATA` | No attempts in the window. |
