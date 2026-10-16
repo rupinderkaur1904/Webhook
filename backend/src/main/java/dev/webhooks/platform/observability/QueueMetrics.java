@@ -74,9 +74,11 @@ public class QueueMetrics {
                 current = new Snapshot(System.nanoTime(), query());
             } catch (RuntimeException e) {
                 // A scrape must never fail because the database is briefly unreachable: report "unknown"
-                // (NaN, which Prometheus drops from aggregations) and try again on the next scrape.
+                // (NaN, which Prometheus drops from aggregations) and try again on the next scrape. The
+                // failure is cached like a result, so the other gauges of this scrape do not each wait for
+                // another connection timeout.
                 log.warn("Could not read queue metrics: {}", e.toString());
-                current = new Snapshot(System.nanoTime() - MAX_AGE.toNanos(), UNKNOWN);
+                current = new Snapshot(System.nanoTime(), UNKNOWN);
             }
             snapshot = current;
         }
