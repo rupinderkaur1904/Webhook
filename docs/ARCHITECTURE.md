@@ -35,7 +35,7 @@ Each failed attempt is classified first.
 A retryable failure with attempts left becomes `RETRYING`, and its `next_attempt_at` is stored in PostgreSQL. No in-memory timers are used, so a restarted instance simply picks the delivery up when it is due. The delay works like this:
 - Raw delay: `min(max-delay, base-delay × 2^(n−1))` after attempt *n*.
 - Equal jitter: a random value between half the raw delay and the full raw delay. This spreads retries without ever dropping below half the intended backoff.
-- On 429 and 503, a valid `Retry-After` (seconds or HTTP-date) raises the delay to at least the requested value, capped at `max-retry-after`. `Retry-After` never adds attempts.
+- On 429 and 503, a valid `Retry-After` (seconds, or an HTTP-date in any of the three RFC 9110 forms) raises the delay to at least the requested value, capped at `max-retry-after`. `Retry-After` never adds attempts.
 
 When a retryable failure happens on the last attempt, the delivery becomes `DEAD_LETTERED` / `RETRIES_EXHAUSTED`. Every attempt is kept with its outcome, status code, latency, retryability and `Retry-After`.
 
@@ -80,6 +80,8 @@ Three situations stop a result from being recorded: the process crashes, hangs, 
 - moves the delivery to `RETRYING` with the normal backoff;
 - if that was the last attempt, dead-letters it with `RETRIES_EXHAUSTED`;
 - if the endpoint was deleted meanwhile, marks it `CANCELLED`.
+
+Each reaper pass also cancels any `PENDING` or `RETRYING` delivery whose endpoint is deleted. This catches a delivery that was re-queued at the moment its endpoint's deletion committed, which the deletion's own cancel cannot see.
 
 Abandoned attempts count against the budget. A payload that crashes the worker every time therefore dead-letters instead of looping.
 
