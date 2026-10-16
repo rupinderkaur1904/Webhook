@@ -67,7 +67,7 @@
         "parameters" : [ {
           "name" : "Idempotency-Key",
           "in" : "header",
-          "required" : false,
+          "required" : true,
           "schema" : {
             "type" : "string"
           }
@@ -678,14 +678,6 @@
       "get" : {
         "tags" : [ "auth-controller" ],
         "operationId" : "csrf",
-        "parameters" : [ {
-          "name" : "token",
-          "in" : "query",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/components/schemas/CsrfToken"
-          }
-        } ],
         "responses" : {
           "200" : {
             "description" : "OK",
@@ -1602,21 +1594,6 @@
           }
         },
         "required" : [ "eligible", "maxReplays", "reason", "replayCount" ]
-      },
-      "CsrfToken" : {
-        "type" : "object",
-        "properties" : {
-          "headerName" : {
-            "type" : "string"
-          },
-          "parameterName" : {
-            "type" : "string"
-          },
-          "token" : {
-            "type" : "string"
-          }
-        },
-        "required" : [ "headerName", "parameterName", "token" ]
       },
       "CsrfResponse" : {
         "type" : "object",

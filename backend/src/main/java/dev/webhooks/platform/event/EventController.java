@@ -63,6 +63,8 @@ public class EventController {
      */
     @PostMapping
     ResponseEntity<EventAcceptedResponse> submit(@AuthenticationPrincipal AccountPrincipal principal,
+            // Optional for Spring so a missing key gets IDEMPOTENCY_KEY_REQUIRED, but required by the contract.
+            @io.swagger.v3.oas.annotations.Parameter(required = true)
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateEventRequest request) {
         rateLimiter.checkIngest(principal.credentialId());

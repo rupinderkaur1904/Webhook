@@ -30,6 +30,8 @@ public class OpenApiConfig {
     static {
         // Event payloads and bodies are arbitrary JSON objects, not Jackson's node API.
         SpringDocUtils.getConfig().replaceWithClass(JsonNode.class, Object.class);
+        // GET /auth/csrf takes the request's CsrfToken as a method argument, not a query parameter.
+        SpringDocUtils.getConfig().addRequestWrapperToIgnore(org.springframework.security.web.csrf.CsrfToken.class);
     }
 
     @Bean
