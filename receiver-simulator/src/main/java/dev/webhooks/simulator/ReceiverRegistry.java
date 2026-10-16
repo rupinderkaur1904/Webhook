@@ -113,6 +113,9 @@ public class ReceiverRegistry {
             if (failureStatus != null && !validStatus(failureStatus)) {
                 return "failureStatus must be 100-599";
             }
+            if (secret != null && !SignatureVerifier.isValidSecret(secret)) {
+                return "secret must be whsec_ followed by base64";
+            }
             return null;
         }
 

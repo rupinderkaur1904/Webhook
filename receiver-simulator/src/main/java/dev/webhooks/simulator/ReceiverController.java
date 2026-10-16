@@ -120,6 +120,9 @@ public class ReceiverController {
         if (request.secret() == null || request.body() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "secret and body are required");
         }
+        if (!SignatureVerifier.isValidSecret(request.secret())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "secret must be whsec_ followed by base64");
+        }
         var result = SignatureVerifier.verify(request.secret(), request.webhookId(), request.webhookTimestamp(),
                 request.webhookSignature(), request.body().getBytes(StandardCharsets.UTF_8), Instant.now(),
                 SignatureVerifier.DEFAULT_TOLERANCE);
