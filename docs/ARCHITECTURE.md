@@ -162,7 +162,7 @@ Delivery is **at-least-once**, not exactly-once. A receiver can see the same `we
 | Metric | Meaning |
 |---|---|
 | `webhooks_events_received_total{result}` | Events accepted, and idempotent replays. |
-| `webhooks_deliveries_created_total` | Deliveries created by fan-out. |
+| `webhooks_deliveries_total` | Deliveries created by fan-out (meter `webhooks.deliveries.created`; the Prometheus client drops the reserved `_created` suffix). |
 | `webhooks_attempts_seconds{outcome}` | Attempt count and duration by outcome (`SUCCESS`, `HTTP_SERVER_ERROR`, `TIMEOUT`…). |
 | `webhooks_deliveries_finished_total{status,reason}` | Deliveries that reached `DELIVERED` or `DEAD_LETTERED` (with the reason). |
 | `webhooks_deliveries_retries_scheduled_total` | Retries scheduled. |

@@ -128,7 +128,42 @@ public class SecurityConfig {
     /** Sessions only: API-key requests authenticate afresh each time and must never create a session. */
     @Bean
     SecurityContextRepository securityContextRepository() {
-        return new HttpSessionSecurityContextRepository();
+        // SessionCreationPolicy.NEVER is not applied to a repository supplied as a bean, so it is set here:
+        // only AuthController's login creates a session. API-key authentications are never stored, or the
+        // framework's session management would save them and every API call would get a session row and a
+        // cookie that keeps working after the key is revoked.
+        var sessions = new HttpSessionSecurityContextRepository();
+        sessions.setAllowSessionCreation(false);
+        return new SecurityContextRepository() {
+            @Override
+            @SuppressWarnings("deprecation")
+            public org.springframework.security.core.context.SecurityContext loadContext(
+                    org.springframework.security.web.context.HttpRequestResponseHolder holder) {
+                return sessions.loadContext(holder);
+            }
+
+            @Override
+            public org.springframework.security.core.context.DeferredSecurityContext loadDeferredContext(
+                    jakarta.servlet.http.HttpServletRequest request) {
+                return sessions.loadDeferredContext(request);
+            }
+
+            @Override
+            public void saveContext(org.springframework.security.core.context.SecurityContext context,
+                    jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
+                var authentication = context.getAuthentication();
+                if (authentication != null && authentication.getAuthorities().stream()
+                        .anyMatch(a -> ROLE_API_CLIENT.equals(a.getAuthority()))) {
+                    return;
+                }
+                sessions.saveContext(context, request, response);
+            }
+
+            @Override
+            public boolean containsContext(jakarta.servlet.http.HttpServletRequest request) {
+                return sessions.containsContext(request);
+            }
+        };
     }
 
     /**
