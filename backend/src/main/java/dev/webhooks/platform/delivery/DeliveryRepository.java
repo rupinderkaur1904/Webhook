@@ -217,6 +217,24 @@ public class DeliveryRepository {
                 .update() == 1;
     }
 
+    /**
+     * Cancels queued (PENDING / RETRYING) deliveries whose endpoint has been deleted. Endpoint
+     * deletion cancels the queue in its own transaction, but a delivery can re-enter the queue
+     * concurrently without seeing the deletion: a retry recorded, a lease reaped, or an event ingested
+     * while the deletion commits. Such a delivery is never claimed (deleted endpoints are excluded),
+     * so without this sweep it would stay queued forever. Returns how many were cancelled.
+     */
+    public int cancelQueuedForDeletedEndpoints() {
+        return jdbc.sql("""
+                        UPDATE deliveries d
+                        SET status = 'CANCELLED', next_attempt_at = NULL, updated_at = now()
+                        FROM endpoints e
+                        WHERE e.id = d.endpoint_id AND e.deleted_at IS NOT NULL
+                          AND d.status IN ('PENDING', 'RETRYING')
+                        """)
+                .update();
+    }
+
     public boolean markDelivered(ClaimedDelivery claim, Integer responseStatus) {
         return jdbc.sql("""
                         UPDATE deliveries
