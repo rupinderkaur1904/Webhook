@@ -54,6 +54,19 @@ public final class SignatureVerifier {
         return Result.INVALID_SIGNATURE;
     }
 
+    /** True if {@code secret} ({@code whsec_} optional) decodes to a non-empty base64 HMAC key. */
+    public static boolean isValidSecret(String secret) {
+        if (secret == null) {
+            return false;
+        }
+        String encoded = secret.startsWith("whsec_") ? secret.substring(6) : secret;
+        try {
+            return Base64.getDecoder().decode(encoded).length > 0;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     static byte[] hmac(String secret, String prefix, byte[] body) {
         String encoded = secret.startsWith("whsec_") ? secret.substring(6) : secret;
         try {
