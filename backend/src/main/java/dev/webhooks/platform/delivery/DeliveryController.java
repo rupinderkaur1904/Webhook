@@ -52,7 +52,7 @@ public class DeliveryController {
             @RequestParam(required = false) String cursor) {
         int size = Page.checkLimit(limit);
         var filter = new DeliveryQueryRepository.Filter(status, endpointId, eventId, eventType, deadLetterReason,
-                from, to);
+                Page.checkTime("from", from), Page.checkTime("to", to));
         List<DeliverySummary> rows = deliveries.list(principal.accountId(), filter,
                 cursor == null ? null : Cursor.decode(cursor), size + 1);
         String next = null;
