@@ -75,10 +75,11 @@ class Client:
         values = {}
         if status == 200:
             for line in raw.decode().splitlines():
-                if line.startswith(("webhooks_queue_due ", "webhooks_queue_oldest_due_seconds", "hikaricp_connections_active",
-                                    "hikaricp_connections_pending", "hikaricp_connections_max")):
-                    name, _, value = line.rpartition(" ")
-                    values[name.split("{")[0]] = float(value)
+                name, _, value = line.rpartition(" ")
+                name = name.split("{")[0]
+                if name in ("webhooks_queue_due", "webhooks_queue_oldest_due_seconds", "hikaricp_connections_active",
+                            "hikaricp_connections_pending", "hikaricp_connections_max"):
+                    values[name] = values.get(name, 0) + float(value)
         return values
 
 
