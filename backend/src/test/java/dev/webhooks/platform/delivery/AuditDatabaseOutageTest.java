@@ -75,12 +75,13 @@ class AuditDatabaseOutageTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        workerLog = new ListAppender<>();
-        workerLog.start();
-        ((Logger) LoggerFactory.getLogger(DeliveryWorker.class)).addAppender(workerLog);
         if (instance == null) {
             instance = startWorkerInstanceBehindProxy();
         }
+        // Attached after the instance starts: starting a context re-initialises Logback.
+        workerLog = new ListAppender<>();
+        workerLog.start();
+        ((Logger) LoggerFactory.getLogger(DeliveryWorker.class)).addAppender(workerLog);
         proxy.restore();
     }
 
