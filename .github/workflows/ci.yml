@@ -18,6 +18,22 @@ jobs:
       # Integration tests start PostgreSQL 16 with Testcontainers (Docker is available on the runner).
       - name: Build and test
         run: ./mvnw -B verify
+      # Job logs are not always readable; failing tests also become check annotations.
+      - name: Report failing tests
+        if: failure()
+        run: |
+          for f in */target/surefire-reports/TEST-*.xml */target/failsafe-reports/TEST-*.xml; do
+            [ -f "$f" ] || continue
+            python3 - "$f" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          suite = ET.parse(sys.argv[1]).getroot()
+          for case in suite.iter('testcase'):
+              for kind in ('failure', 'error'):
+                  for el in case.findall(kind):
+                      msg = (el.get('message') or el.get('type') or '').replace('\n', ' ')[:900]
+                      print(f"::error title={case.get('classname')}.{case.get('name')}::{kind}: {msg}")
+          PY
+          done
 
   frontend:
     runs-on: ubuntu-latest
