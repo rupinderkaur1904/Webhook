@@ -35,6 +35,7 @@ public final class AddressPolicy {
     private static final List<Cidr> BLOCKED_V6 = List.of(
             Cidr.of("::/128"),
             Cidr.of("::1/128"),
+            Cidr.of("::ffff:0:0:0/96"), // IPv4-translated (RFC 2765 SIIT): embeds an IPv4 address
             Cidr.of("100::/64"),
             Cidr.of("2001::/32"),      // Teredo: embeds an obfuscated IPv4 address
             Cidr.of("2001:db8::/32"),
