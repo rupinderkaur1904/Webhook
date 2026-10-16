@@ -246,6 +246,11 @@ The compose job failed once on `fd10434`. The Playwright step failed, but the jo
 - **Cause:** the cause of that one failure is unknown.
 - **Change:** CI now reports Playwright failures as check annotations, which can be read through the API.
 
+Two more CI failures after the merge:
+
+- **Backend job on `d06b1dc`.** It failed once. The same backend code then passed on the next two commits and locally, so at least one backend test is **intermittent on GitHub's runners**. Which test it was is unknown: the logs were unreadable. The backend job now also prints failing tests as annotations, so the next occurrence will name it (follow-up 13).
+- **Compose job on `9ae6abc`.** It failed in the browser test "a URL without a receiver path…". The registration helper waited for the endpoint page's URL but not for the page itself, so a click landed on the list while it was still shown. This was a test race, not a product defect. The helper now waits for the endpoint's heading (`70021fd`); the full suite passed 18/18 locally afterwards.
+
 ### 5.7 Performance
 
 Measured with `scripts/bench.py` against the isolated `whci` stack running the audit images.
@@ -418,3 +423,4 @@ Each item is something you can do in the dashboard at http://localhost:8080 (sig
 10. **(P3)** Offer a circuit reset after a URL change. Document the single-previous-secret rotation rule.
 11. **(P3)** Add a retention policy for old events, deliveries and attempts.
 12. **(P3)** Rerun the Java dependency check where Maven Central is reachable.
+13. **(P2)** Identify and fix the intermittent backend test from the `d06b1dc` CI run once an annotation names it.
