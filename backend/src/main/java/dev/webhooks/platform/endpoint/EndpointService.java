@@ -96,13 +96,20 @@ public class EndpointService {
 
     @Transactional
     public EndpointResponse update(UUID accountId, UUID id, UpdateEndpointRequest request) {
-        Endpoint current = get(accountId, id);
+        get(accountId, id); // 404 before any validation, as before
+        if (request.name() != null && request.name().isBlank()) {
+            // Stored trimmed, so a whitespace-only name would otherwise reach the database CHECK as "".
+            throw ApiException.validation("name", "must not be blank");
+        }
+        String url = request.url() != null ? validateUrl(request.url()) : null; // DNS lookup, before the row lock
+        // Row lock: omitted fields are copied from this read, so it must not be stale (no lost updates).
+        Endpoint current = endpoints.findForUpdate(accountId, id).orElseThrow(() -> ApiException.notFound("Endpoint"));
         Endpoint updated = new Endpoint(
                 current.id(),
                 current.accountId(),
                 request.name() != null ? request.name().trim() : current.name(),
                 request.description() != null ? blankToNull(request.description()) : current.description(),
-                request.url() != null ? validateUrl(request.url()) : current.url(),
+                url != null ? url : current.url(),
                 request.eventTypes() != null ? eventTypes(request.eventTypes()) : current.eventTypes(),
                 request.enabled() != null ? request.enabled() : current.enabled(),
                 current.secretPrefix(),

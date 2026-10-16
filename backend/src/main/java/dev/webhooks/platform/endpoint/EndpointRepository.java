@@ -58,6 +58,18 @@ public class EndpointRepository {
                 .optional();
     }
 
+    /**
+     * Like {@link #find} but locks the row for the rest of the transaction, so a read-modify-write
+     * (a partial PATCH) cannot overwrite a concurrent update with stale values.
+     */
+    public Optional<Endpoint> findForUpdate(UUID accountId, UUID id) {
+        return jdbc.sql("SELECT " + COLUMNS + " FROM endpoints WHERE id = :id AND account_id = :account AND deleted_at IS NULL FOR UPDATE")
+                .param("id", id)
+                .param("account", accountId)
+                .query(EndpointRepository::map)
+                .optional();
+    }
+
     public List<Endpoint> list(UUID accountId) {
         return jdbc.sql("SELECT " + COLUMNS + """
                          FROM endpoints WHERE account_id = :account AND deleted_at IS NULL
