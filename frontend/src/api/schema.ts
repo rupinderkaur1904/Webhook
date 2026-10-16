@@ -642,11 +642,6 @@ export interface components {
             /** Format: int32 */
             replayCount: number;
         };
-        CsrfToken: {
-            headerName: string;
-            parameterName: string;
-            token: string;
-        };
         CsrfResponse: {
             headerName: string;
             token: string;
@@ -704,8 +699,8 @@ export interface operations {
     submit: {
         parameters: {
             query?: never;
-            header?: {
-                "Idempotency-Key"?: string;
+            header: {
+                "Idempotency-Key": string;
             };
             path?: never;
             cookie?: never;
@@ -1183,9 +1178,7 @@ export interface operations {
     };
     csrf: {
         parameters: {
-            query: {
-                token: components["schemas"]["CsrfToken"];
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;

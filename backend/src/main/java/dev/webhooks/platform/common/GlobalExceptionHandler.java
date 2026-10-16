@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -87,6 +88,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
+        // Spring's own handlers (404 no route, 405, 415, ...) pass a null body and let the superclass
+        // take the exception's ProblemDetail; take it here so it gets the code and requestId too.
+        if (body == null && ex instanceof ErrorResponse errorResponse) {
+            body = errorResponse.getBody();
+        }
         if (ex instanceof MissingRequestHeaderException missing) {
             body = problem(HttpStatus.BAD_REQUEST, "MISSING_HEADER", "Required header '" + missing.getHeaderName() + "' is missing");
             statusCode = HttpStatus.BAD_REQUEST;
