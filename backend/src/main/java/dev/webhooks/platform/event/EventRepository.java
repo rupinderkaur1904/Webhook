@@ -57,18 +57,20 @@ public class EventRepository {
                 .optional();
     }
 
-    /** Events newest first, with per-status delivery counts. {@code from} is inclusive, {@code to} exclusive. */
+    /**
+     * Events newest first, with per-status delivery counts. {@code from} is inclusive, {@code to} exclusive.
+     * The page of events is selected first (keyset scan of {@code events_account_created_idx}) and the
+     * counts are computed for that page only, so the cost does not grow with the account's history.
+     */
     public List<EventDtos.EventSummary> list(UUID accountId, String eventType, Instant from, Instant to, Cursor cursor,
             int limit) {
         StringBuilder sql = new StringBuilder("""
                 SELECT e.id, e.event_type, e.idempotency_key, e.created_at,
-                       count(d.id) AS delivery_count,
-                       count(d.id) FILTER (WHERE d.status = 'DELIVERED') AS delivered_count,
-                       count(d.id) FILTER (WHERE d.status = 'DEAD_LETTERED') AS dead_lettered_count,
-                       count(d.id) FILTER (WHERE d.status IN ('PENDING', 'RETRYING', 'IN_FLIGHT')) AS active_count
-                FROM events e
-                LEFT JOIN deliveries d ON d.event_id = e.id
-                WHERE e.account_id = :account
+                       c.delivery_count, c.delivered_count, c.dead_lettered_count, c.active_count
+                FROM (
+                    SELECT e.id, e.event_type, e.idempotency_key, e.created_at
+                    FROM events e
+                    WHERE e.account_id = :account
                 """);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("account", accountId);
@@ -89,7 +91,19 @@ public class EventRepository {
             params.put("cursorAt", offset(cursor.createdAt()));
             params.put("cursorId", cursor.id());
         }
-        sql.append(" GROUP BY e.id ORDER BY e.created_at DESC, e.id DESC LIMIT :limit");
+        sql.append("""
+                     ORDER BY e.created_at DESC, e.id DESC LIMIT :limit
+                ) e
+                LEFT JOIN LATERAL (
+                    SELECT count(*) AS delivery_count,
+                           count(*) FILTER (WHERE d.status = 'DELIVERED') AS delivered_count,
+                           count(*) FILTER (WHERE d.status = 'DEAD_LETTERED') AS dead_lettered_count,
+                           count(*) FILTER (WHERE d.status IN ('PENDING', 'RETRYING', 'IN_FLIGHT')) AS active_count
+                    FROM deliveries d
+                    WHERE d.event_id = e.id
+                ) c ON true
+                ORDER BY e.created_at DESC, e.id DESC
+                """);
         params.put("limit", limit);
         return jdbc.sql(sql.toString()).params(params).query((rs, n) -> new EventDtos.EventSummary(
                         rs.getObject("id", UUID.class),

@@ -64,7 +64,9 @@ public class DeliveryQueryRepository {
             params.put("eventId", filter.eventId());
         }
         if (filter.eventType() != null) {
-            sql.append(" AND ev.event_type = :eventType");
+            // The account condition on ev lets PostgreSQL use events_account_type_created_idx instead of
+            // scanning every tenant's events for the type (an event and its deliveries share the account).
+            sql.append(" AND ev.account_id = :account AND ev.event_type = :eventType");
             params.put("eventType", filter.eventType());
         }
         if (filter.deadLetterReason() != null) {
