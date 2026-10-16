@@ -5,3 +5,5 @@ target/
 .DS_Store
 *.log
 .env
+__pycache__/
+.claude/worktrees/
