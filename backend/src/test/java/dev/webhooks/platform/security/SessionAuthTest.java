@@ -228,6 +228,45 @@ class SessionAuthTest {
         assertThat(login(freshBrowser(), "long-enough-password").getResponse().getStatus()).isEqualTo(200);
     }
 
+    /** Audit: cookie attributes, idle timeout in the stored session, and logout needing CSRF. */
+    @Test
+    void sessionCookieAttributesIdleTimeoutAndLogoutCsrf() throws Exception {
+        MvcResult result = login(freshBrowser(), PASSWORD);
+        String setCookie = result.getResponse().getHeaders("Set-Cookie").stream()
+                .filter(h -> h.startsWith(SESSION_COOKIE + "=")).findFirst().orElseThrow();
+        assertThat(setCookie).contains("HttpOnly").contains("Secure").contains("SameSite=Lax").contains("Path=/")
+                .doesNotContain("Domain=");
+        assertThat(jdbc.sql("SELECT max_inactive_interval FROM spring_session WHERE principal_name = :p")
+                .param("p", userId.toString()).query(Integer.class).single()).isEqualTo(8 * 3600);
+
+        Browser browser = new Browser(lastCookie(result, "XSRF-TOKEN"), result.getResponse().getCookie(SESSION_COOKIE));
+        // Logout without the token is refused, so a cross-site form cannot sign the user out.
+        mvc.perform(post("/api/v1/auth/logout").cookie(browser.cookies()))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CSRF_TOKEN_INVALID"));
+        mvc.perform(get("/api/v1/auth/me").cookie(browser.session())).andExpect(status().isOk());
+        // An expired session (idle past the timeout) no longer authenticates.
+        jdbc.sql("UPDATE spring_session SET last_access_time = last_access_time - 8 * 3600 * 1000 - 1000, "
+                        + "expiry_time = expiry_time - 8 * 3600 * 1000 - 1000 WHERE principal_name = :p")
+                .param("p", userId.toString()).update();
+        mvc.perform(get("/api/v1/auth/me").cookie(browser.session())).andExpect(status().isUnauthorized());
+    }
+
+    /** Audit: apart from the request id, a wrong password and an unknown email produce identical answers. */
+    @Test
+    void wrongPasswordAndUnknownEmailBodiesAreIdentical() throws Exception {
+        MvcResult wrong = login(freshBrowser(), "not the password");
+        String original = email;
+        email = "nobody-" + UUID.randomUUID() + "@test.local";
+        MvcResult unknown = login(freshBrowser(), PASSWORD);
+        email = original;
+        var a = (tools.jackson.databind.node.ObjectNode) json.readTree(wrong.getResponse().getContentAsString());
+        var b = (tools.jackson.databind.node.ObjectNode) json.readTree(unknown.getResponse().getContentAsString());
+        a.remove("requestId");
+        b.remove("requestId");
+        assertThat(a).isEqualTo(b);
+        assertThat(wrong.getResponse().getHeaderNames()).containsExactlyInAnyOrderElementsOf(unknown.getResponse().getHeaderNames());
+    }
+
     @Test
     void responsesCarryBrowserHardeningHeaders() throws Exception {
         var auth = UsernamePasswordAuthenticationToken.authenticated(AccountPrincipal.forSession(userId), null,
