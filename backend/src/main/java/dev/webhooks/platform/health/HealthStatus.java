@@ -6,8 +6,8 @@ public enum HealthStatus {
     DISABLED,
     /**
      * The circuit is open or half-open, or the circuit's consecutive-failure count has reached
-     * {@code failing-after} (default 5). Like the circuit, that count ignores 429s, non-retryable
-     * answers and blocked destinations.
+     * {@code failing-after} (default 5). Like the circuit, that count ignores 429s and blocked
+     * destinations, and a success or a non-retryable answer (which proves the receiver is up) resets it.
      */
     FAILING,
     /** Attempt success rate under 90% with at least 10 attempts in the window, or any dead letter in it. */
