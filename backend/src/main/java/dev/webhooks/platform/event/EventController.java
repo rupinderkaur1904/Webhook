@@ -63,6 +63,8 @@ public class EventController {
      */
     @PostMapping
     ResponseEntity<EventAcceptedResponse> submit(@AuthenticationPrincipal AccountPrincipal principal,
+            // Optional for Spring so a missing key gets IDEMPOTENCY_KEY_REQUIRED, but required by the contract.
+            @io.swagger.v3.oas.annotations.Parameter(required = true)
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateEventRequest request) {
         rateLimiter.checkIngest(principal.credentialId());
@@ -84,7 +86,7 @@ public class EventController {
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor) {
         int size = Page.checkLimit(limit);
-        List<EventSummary> rows = events.list(principal.accountId(), eventType, from, to,
+        List<EventSummary> rows = events.list(principal.accountId(), eventType, Page.checkTime("from", from), Page.checkTime("to", to),
                 cursor == null ? null : Cursor.decode(cursor), size + 1);
         String next = null;
         if (rows.size() > size) {

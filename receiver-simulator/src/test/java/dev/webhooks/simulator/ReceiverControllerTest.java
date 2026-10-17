@@ -13,12 +13,22 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest
+/** The local setup: no control token, control API opened explicitly. */
+@SpringBootTest(properties = "simulator.open-control-api=true")
 @AutoConfigureMockMvc
 class ReceiverControllerTest {
 
     @Autowired
     MockMvc mvc;
+
+    @Test
+    void deliveryToTheRootOrReceiversPathExplainsTheRightUrl() throws Exception {
+        for (String path : new String[] {"/", "/receivers", "/receivers/"}) {
+            mvc.perform(post(path).content("{}"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.hint").value(org.hamcrest.Matchers.containsString("/receivers/demo")));
+        }
+    }
 
     @Test
     void respondsWithConfiguredStatusAndLogsDuplicates() throws Exception {

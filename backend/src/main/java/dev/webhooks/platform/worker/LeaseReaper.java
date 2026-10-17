@@ -29,6 +29,9 @@ import org.springframework.transaction.support.TransactionTemplate;
  * forever. Every instance runs a reaper; {@code SKIP LOCKED} keeps them from processing the same row,
  * and the lease-token guard keeps a reaped delivery safe from a worker that reports late.
  *
+ * <p>Each pass also cancels queued deliveries whose endpoint was deleted while they were being
+ * re-queued (a race the deletion's own cancel cannot see).
+ *
  * <p>The same loop moves circuit breakers whose cool-down has passed to HALF_OPEN and picks their
  * probe delivery ({@link CircuitService#startProbes}).
  */
@@ -57,8 +60,21 @@ public class LeaseReaper implements SmartLifecycle {
         this.tx = tx;
     }
 
-    /** Recovers every currently expired lease, in batches. Returns how many deliveries were recovered. */
+    /**
+     * Recovers every currently expired lease, in batches, then cancels any queued delivery left behind
+     * for a deleted endpoint ({@link DeliveryRepository#cancelQueuedForDeletedEndpoints}). Returns how
+     * many deliveries were recovered from expired leases.
+     */
     public int reapExpired() {
+        int total = reapExpiredLeases();
+        int cancelled = deliveries.cancelQueuedForDeletedEndpoints();
+        if (cancelled > 0) {
+            log.warn("Cancelled {} queued deliveries whose endpoint was deleted concurrently", cancelled);
+        }
+        return total;
+    }
+
+    private int reapExpiredLeases() {
         int total = 0;
         while (true) {
             Integer recovered = tx.execute(status -> reapBatch());

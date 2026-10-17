@@ -1,0 +1,272 @@
+{
+  "description" : "Standard Webhooks verification vectors. Signatures were produced by the platform's own signer (dev.webhooks.platform.signing.WebhookSigner), not by the examples. Bodies are the exact UTF-8 request bytes. 'now' and webhook-timestamp are unix seconds; tolerance is 300 seconds either way.",
+  "toleranceSeconds" : 300,
+  "vectors" : [ {
+    "name" : "valid",
+    "description" : "Single v1 signature from the current secret, timestamp 30s before now.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  }, {
+    "name" : "rotation_second_signature_matches",
+    "description" : "Secret-rotation grace period: the header carries new and old signatures; the receiver still holds the old secret, so only the second entry matches.",
+    "secret" : "whsec_BH1pBfVmTo7GBo2j56fsbiuvODvMFaoFtscPtljma6I=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4= v1,0PyQCAzz/fpKSUI+MUGa+nl3CD8PUVoAnu1op8bwH88="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  }, {
+    "name" : "rotation_first_signature_matches",
+    "description" : "Same rotation header; the receiver already switched to the new secret, so the first entry matches.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4= v1,0PyQCAzz/fpKSUI+MUGa+nl3CD8PUVoAnu1op8bwH88="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  }, {
+    "name" : "tampered_body",
+    "description" : "Signature is for the original body; one byte of the amount was changed in transit.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.9,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "reserialized_body",
+    "description" : "Same JSON value re-serialized with spaces after separators. Verifying anything but the raw bytes fails.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\": \"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\", \"type\": \"order.created\", \"createdAt\": \"2025-10-15T11:59:30Z\", \"data\": {\"orderId\": \"ord_1001\", \"customer\": \"Zoë Šimić\", \"total\": 42.5, \"items\": [{\"sku\": \"A/1\", \"qty\": 2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "wrong_secret",
+    "description" : "Signed with a different endpoint's secret.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,EjSblxEKZHFGa2FbgMHmAAkOEafiuraNCsn245+ObRg="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "different_webhook_id",
+    "description" : "Signature computed for this body but presented with another webhook-id (replayed under a new id).",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "9b2e4c1d-0000-4000-8000-000000000000",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "timestamp_too_old",
+    "description" : "Correctly signed, but the timestamp is 301s before now (tolerance is 300s).",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529299",
+      "webhook-signature" : "v1,GtKlNru4IA3r3EHNTOqP3TvVq5Qs5RtrProvb9n2L90="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "timestamp_out_of_tolerance"
+    }
+  }, {
+    "name" : "timestamp_too_far_in_future",
+    "description" : "Correctly signed, but the timestamp is 301s after now.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529901",
+      "webhook-signature" : "v1,UGI35Q72pAGodTmvhmAXehOAcaKUgiTfxi1L6kBsyIY="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "timestamp_out_of_tolerance"
+    }
+  }, {
+    "name" : "timestamp_at_tolerance_edge",
+    "description" : "Correctly signed, timestamp exactly 300s before now: still accepted.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529300",
+      "webhook-signature" : "v1,5ytLRU3PkwMeuhfBBdPFcLL+80WpcxlzSl4jFUouqXg="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  }, {
+    "name" : "timestamp_not_a_number",
+    "description" : "webhook-timestamp is not an integer number of seconds.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "2025-10-15T11:59:30Z",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "invalid_timestamp"
+    }
+  }, {
+    "name" : "missing_signature_header",
+    "description" : "webhook-signature header absent.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570"
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "missing_header"
+    }
+  }, {
+    "name" : "missing_id_header",
+    "description" : "webhook-id header absent.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "missing_header"
+    }
+  }, {
+    "name" : "missing_timestamp_header",
+    "description" : "webhook-timestamp header absent.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-signature" : "v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "missing_header"
+    }
+  }, {
+    "name" : "unknown_version_only",
+    "description" : "Only a v2 entry (the correct bytes under an unknown prefix): unknown versions are ignored, so nothing matches.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v2,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "unknown_version_then_v1",
+    "description" : "An unknown v2 entry followed by a valid v1 entry: the v2 entry is skipped and v1 matches.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v2,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4= v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  }, {
+    "name" : "malformed_base64_only",
+    "description" : "The only v1 entry is not valid base64.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,%%%not*base64%%%"
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : false,
+      "reason" : "no_matching_signature"
+    }
+  }, {
+    "name" : "malformed_base64_then_v1",
+    "description" : "A malformed v1 entry followed by a valid one: the malformed entry is skipped.",
+    "secret" : "whsec_6daTtVe28iyJFyoKEnZnlsactNzOskw/rQWD8ddcfsQ=",
+    "headers" : {
+      "webhook-id" : "3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17",
+      "webhook-timestamp" : "1760529570",
+      "webhook-signature" : "v1,%%%not*base64%%% v1,rvG4u/mKfdxqb72SmowTmCBmCI6T32uiPI2PPZHraS4="
+    },
+    "body" : "{\"id\":\"3f1c2a9e-7b4d-4e8a-9c61-2d5f0b8e4a17\",\"type\":\"order.created\",\"createdAt\":\"2025-10-15T11:59:30Z\",\"data\":{\"orderId\":\"ord_1001\",\"customer\":\"Zoë Šimić\",\"total\":42.5,\"items\":[{\"sku\":\"A/1\",\"qty\":2}]}}",
+    "now" : 1760529600,
+    "expected" : {
+      "valid" : true,
+      "reason" : "ok"
+    }
+  } ]
+}

@@ -36,6 +36,10 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
+  # Forwarded headers are handled only for webhooks.proxy.trusted-proxies (TrustedProxyConfig). "none"
+  # also stops Spring Boot from switching on its own handling when it detects a cloud platform, which
+  # would trust every private-network address.
+  forward-headers-strategy: none
   error:
     include-stacktrace: never
     include-message: never
@@ -75,6 +79,12 @@ webhooks:
     session-cookie-secure: ${SESSION_COOKIE_SECURE:true}
   metrics:
     token: ${METRICS_TOKEN:}
+  # CIDR ranges of the hosting platform's reverse proxy (README "Deployment"). Empty: trust no
+  # forwarding headers.
+  proxy:
+    trusted-proxies: ${TRUSTED_PROXIES:}
+    # Logs each request's TCP peer and forwarding headers (first deployment only).
+    diagnostics: ${PROXY_DIAGNOSTICS:false}
   # Per-endpoint circuit breaker (README "Circuit breaker and endpoint health").
   circuit:
     failure-threshold: ${CIRCUIT_FAILURE_THRESHOLD:10}

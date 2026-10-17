@@ -23,6 +23,14 @@ webhooks:
     # Host-only entry: the in-process test receiver listens on a random port.
     allowed-hosts:
       - 127.0.0.1
+spring:
+  datasource:
+    hikari:
+      # Spring caches one application context per distinct test configuration, each with its own
+      # pool. Small, mostly idle pools keep the cached contexts under PostgreSQL's 100 connections.
+      maximum-pool-size: 10
+      minimum-idle: 1
+      idle-timeout: 10000
 logging:
   level:
     dev.webhooks: INFO

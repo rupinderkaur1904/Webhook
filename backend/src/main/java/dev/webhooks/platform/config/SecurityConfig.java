@@ -9,10 +9,15 @@ import dev.webhooks.platform.auth.CsrfCookieFilter;
 import dev.webhooks.platform.auth.MetricsTokenFilter;
 import dev.webhooks.platform.auth.ProblemAccessDeniedHandler;
 import dev.webhooks.platform.auth.ProblemAuthenticationEntryPoint;
+import dev.webhooks.platform.web.DashboardController;
+import jakarta.servlet.DispatcherType;
 import java.util.Map;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import dev.webhooks.platform.common.GlobalExceptionHandler;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.argon2.Argon2PasswordEncoder;
@@ -20,6 +25,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.firewall.RequestRejectedHandler;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
@@ -83,6 +89,9 @@ public class SecurityConfig {
                 .addFilterBefore(new ApiKeyAuthenticationFilter(apiKeys, entryPoint), AnonymousAuthenticationFilter.class)
                 .addFilterBefore(new MetricsTokenFilter(properties.metrics().token()), ApiKeyAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
+                        // The container's own error dispatch (e.g. Tomcat refusing TRACE with 405) keeps its
+                        // status instead of becoming a 401; a direct request to /error is still denied.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.GET, MetricsTokenFilter.PATH).hasAuthority(MetricsTokenFilter.ROLE_METRICS)
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
@@ -93,8 +102,28 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/events").hasAnyAuthority(ROLE_USER, ROLE_API_CLIENT)
                         .requestMatchers(HttpMethod.GET, "/api/**").hasAnyAuthority(ROLE_USER, ROLE_API_CLIENT)
                         .requestMatchers("/api/**").hasAuthority(ROLE_USER)
+                        // The dashboard's static files and client-side routes; its data needs a session.
+                        .requestMatchers(HttpMethod.GET, DashboardController.ROUTES).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/index.html", "/assets/**", "/favicon.svg").permitAll()
                         .anyRequest().denyAll());
         return http.build();
+    }
+
+    /**
+     * Requests the firewall rejects (encoded dots, {@code //}, {@code ;} path parameters, TRACE, ...)
+     * get a 400 problem. Spring Security's default rethrows, and the container's error dispatch then
+     * ends in this chain's entry point: a misleading 401 without the request id or hardening headers.
+     */
+    @Bean
+    RequestRejectedHandler requestRejectedHandler(ObjectMapper objectMapper) {
+        return (request, response, ex) -> {
+            response.setStatus(HttpStatus.BAD_REQUEST.value());
+            response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
+            response.setHeader("X-Content-Type-Options", "nosniff");
+            response.setHeader("Cache-Control", "no-store");
+            objectMapper.writeValue(response.getOutputStream(), GlobalExceptionHandler.problem(HttpStatus.BAD_REQUEST,
+                    "REQUEST_REJECTED", "The request method or URL is not allowed"));
+        };
     }
 
     /** Readable by the SPA (it must echo the value in a header); scoped to the whole site. */
@@ -124,7 +153,42 @@ public class SecurityConfig {
     /** Sessions only: API-key requests authenticate afresh each time and must never create a session. */
     @Bean
     SecurityContextRepository securityContextRepository() {
-        return new HttpSessionSecurityContextRepository();
+        // SessionCreationPolicy.NEVER is not applied to a repository supplied as a bean, so it is set here:
+        // only AuthController's login creates a session. API-key authentications are never stored, or the
+        // framework's session management would save them and every API call would get a session row and a
+        // cookie that keeps working after the key is revoked.
+        var sessions = new HttpSessionSecurityContextRepository();
+        sessions.setAllowSessionCreation(false);
+        return new SecurityContextRepository() {
+            @Override
+            @SuppressWarnings("deprecation")
+            public org.springframework.security.core.context.SecurityContext loadContext(
+                    org.springframework.security.web.context.HttpRequestResponseHolder holder) {
+                return sessions.loadContext(holder);
+            }
+
+            @Override
+            public org.springframework.security.core.context.DeferredSecurityContext loadDeferredContext(
+                    jakarta.servlet.http.HttpServletRequest request) {
+                return sessions.loadDeferredContext(request);
+            }
+
+            @Override
+            public void saveContext(org.springframework.security.core.context.SecurityContext context,
+                    jakarta.servlet.http.HttpServletRequest request, jakarta.servlet.http.HttpServletResponse response) {
+                var authentication = context.getAuthentication();
+                if (authentication != null && authentication.getAuthorities().stream()
+                        .anyMatch(a -> ROLE_API_CLIENT.equals(a.getAuthority()))) {
+                    return;
+                }
+                sessions.saveContext(context, request, response);
+            }
+
+            @Override
+            public boolean containsContext(jakarta.servlet.http.HttpServletRequest request) {
+                return sessions.containsContext(request);
+            }
+        };
     }
 
     /**

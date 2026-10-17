@@ -54,7 +54,7 @@ describe('endpoint health', () => {
     expect(screen.getByText('42 ms / 180 ms')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Close circuit now' }));
-    expect(await screen.findByText('Deliveries flow normally.')).toBeInTheDocument();
+    expect(await screen.findByText(/Circuit closed: deliveries to this endpoint are not paused/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Close circuit now' })).not.toBeInTheDocument();
     const reset = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/circuit/reset'))!;
     expect(reset[1]?.method).toBe('POST');
@@ -68,7 +68,7 @@ describe('endpoint health', () => {
       '/api/v1/deliveries': empty,
     });
     renderAt(`/endpoints/${endpoint.id}`, '/endpoints/:id', <EndpointDetailPage />);
-    expect(await screen.findByText('Deliveries flow normally.')).toBeInTheDocument();
+    expect(await screen.findByText(/Circuit closed: deliveries to this endpoint are not paused/)).toBeInTheDocument();
     await userEvent.click(screen.getByText('7d'));
     await screen.findByText('95.0% (38/40)');
     expect(fetchedUrls(fetchMock)).toEqual(

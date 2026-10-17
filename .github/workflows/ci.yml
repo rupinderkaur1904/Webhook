@@ -18,6 +18,22 @@ jobs:
       # Integration tests start PostgreSQL 16 with Testcontainers (Docker is available on the runner).
       - name: Build and test
         run: ./mvnw -B verify
+      # Job logs are not always readable; failing tests also become check annotations.
+      - name: Report failing tests
+        if: failure()
+        run: |
+          for f in */target/surefire-reports/TEST-*.xml */target/failsafe-reports/TEST-*.xml; do
+            [ -f "$f" ] || continue
+            python3 - "$f" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          suite = ET.parse(sys.argv[1]).getroot()
+          for case in suite.iter('testcase'):
+              for kind in ('failure', 'error'):
+                  for el in case.findall(kind):
+                      msg = (el.get('message') or el.get('type') or '').replace('\n', ' ')[:900]
+                      print(f"::error title={case.get('classname')}.{case.get('name')}::{kind}: {msg}")
+          PY
+          done
 
   frontend:
     runs-on: ubuntu-latest
@@ -32,6 +48,92 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
+      # schema.ts must be generated from the committed contract (the backend's OpenApiContractTest
+      # keeps openapi.json in step with the API).
+      - name: Generated API types are up to date
+        run: npm run gen:api && git diff --exit-code src/api/schema.ts
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # Receiver-verification examples (standard library only), checked against the shared vectors that the
+  # platform's own signer produced.
+  receiver-examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Java
+        working-directory: examples/receivers/java
+        run: javac -d build Receiver.java && java -cp build VerifyTest.java
+      - name: Node.js
+        working-directory: examples/receivers/node
+        run: node --test
+      - name: Python
+        working-directory: examples/receivers/python
+        run: python3 -m unittest -v
+
+  # The release image built from the Dockerfile, started with compose on a clean database, then the
+  # delivery and crash-recovery demos run against it.
+  compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images
+        run: docker compose build
+      - name: Start the stack on a clean database
+        run: |
+          docker compose up -d
+          for i in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)")" = healthy ] && break
+            sleep 3
+          done
+          docker compose ps
+          curl -sf http://localhost:8080/actuator/health
+          curl -sf http://localhost:8080/ | grep -q '<div id="root">'
+      - name: Delivery, retry and replay demos
+        env:
+          SIMULATOR_URL_FROM_API: http://simulator:9090
+        run: |
+          scripts/demo.sh success
+          scripts/demo.sh recover
+          scripts/demo.sh replay
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Browser end-to-end tests (Playwright)
+        working-directory: frontend
+        env:
+          E2E_RESTART_CMD: docker compose restart app
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+      - name: Crash recovery (SIGKILL the app container mid-delivery)
+        env:
+          SIMULATOR_URL_FROM_API: http://simulator:9090
+          CRASH_CMD: docker compose kill app
+          START_CMD: docker compose start app
+        run: scripts/demo.sh crash
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color app simulator | tail -300

@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,6 +49,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "INVALID_PARAMETER",
                 "Parameter '" + ex.getName() + "' has an invalid value");
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /** PostgreSQL unreachable inside a controller: the same answer as {@link DatabaseUnavailableFilter}. */
+    @ExceptionHandler({org.springframework.dao.DataAccessResourceFailureException.class,
+            org.springframework.dao.TransientDataAccessResourceException.class})
+    ResponseEntity<ProblemDetail> handleDatabaseUnavailable(Exception ex) {
+        log.warn("Database unavailable: {}", ex.toString());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, DatabaseUnavailableFilter.RETRY_AFTER_SECONDS)
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE",
+                        "The database is temporarily unavailable; retry shortly"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -87,6 +99,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
+        // Spring's own handlers (404 no route, 405, 415, ...) pass a null body and let the superclass
+        // take the exception's ProblemDetail; take it here so it gets the code and requestId too.
+        if (body == null && ex instanceof ErrorResponse errorResponse) {
+            body = errorResponse.getBody();
+        }
         if (ex instanceof MissingRequestHeaderException missing) {
             body = problem(HttpStatus.BAD_REQUEST, "MISSING_HEADER", "Required header '" + missing.getHeaderName() + "' is missing");
             statusCode = HttpStatus.BAD_REQUEST;

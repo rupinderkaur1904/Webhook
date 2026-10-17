@@ -16,7 +16,7 @@ class WebhookPropertiesTest {
     }
 
     static WebhookProperties properties(Duration lease, Duration connect, Duration response) {
-        return new WebhookProperties(null, null, worker(lease), new Delivery(connect, response, 2048), null, null, null, null, null, null, null, null);
+        return new WebhookProperties(null, null, worker(lease), new Delivery(connect, response, 2048), null, null, null, null, null, null, null, null, null);
     }
 
     @Test

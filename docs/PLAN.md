@@ -277,6 +277,7 @@ Rules enforced in code **and** in SQL `WHERE` clauses (every transition is a con
 | IN_FLIGHT | DEAD_LETTERED | permanent failure, blocked destination, or budget exhausted |
 | IN_FLIGHT | RETRYING / DEAD_LETTERED | lease expired (reaper) |
 | PENDING, RETRYING | CANCELLED | endpoint deleted |
+| IN_FLIGHT | CANCELLED | endpoint deleted while the attempt was in flight: a retryable result, or a reaped lease |
 | DELIVERED, DEAD_LETTERED, CANCELLED | — | terminal; never updated again |
 
 Disabling an endpoint or an open circuit does **not** change delivery status. Deliveries stay `PENDING`/`RETRYING` and simply are not claimed. Nothing is discarded.
@@ -932,6 +933,13 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **Delivery detail** shows the current lease (`lease.owner`, `lease.expiresAt`) while a delivery is in flight.
 - **The crash test kills a real JVM.** It starts the platform as a child process with the test classpath, holds a request open at the receiver, sends SIGKILL, then recovers. This is closer to §13's `docker compose kill app` than simulating the database state.
 
+- **Audit fixes (worker):**
+  - The result transaction updates the delivery row before the attempt row, the same lock order as the lease reaper. In the opposite order a late result meeting the reaper deadlocked, and PostgreSQL aborted one side.
+  - A delivery re-queued while its endpoint's deletion commits (a retry recorded, a lease reaped, an event ingested) is not seen by the deletion's own cancel. Every reaper pass therefore also cancels `PENDING`/`RETRYING` deliveries of deleted endpoints.
+  - A response body is no longer drained. When more than the stored 2 KB follows, the connection is dropped, as the Stage 1 note above says. Before, a `2xx` with a large or stalling body ran into the response deadline and was recorded as a timeout and re-sent.
+  - `Retry-After` accepts all three HTTP-date forms (RFC 9110 §5.6.7) and only ASCII digits.
+
+**Stage 5**
 **Stage 5**
 - **API keys are limited to ingestion and reads.** §5.2 marks management routes "session"; this is enforced, so a key gets `403 SESSION_REQUIRED` on endpoint changes, replay, rotation, key management and `/auth/*`. Tests and the demo script now use a session for those calls.
 - **CSRF** is a double-submit cookie (`XSRF-TOKEN`, readable by the SPA, echoed in `X-XSRF-TOKEN`) rather than a token stored in the session. Login itself needs the token (no login CSRF), and that would otherwise require a session for every anonymous visitor. Requests with `Authorization: Bearer` skip CSRF; the API-key filter then replaces any session authentication on that request, so a Bearer header cannot be used to act with session rights.

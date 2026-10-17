@@ -138,12 +138,16 @@ public class DeliveryProcessor {
                 (int) Math.min(result.durationMs(), Integer.MAX_VALUE));
 
         boolean applied = Boolean.TRUE.equals(tx.execute(status -> {
-            deliveries.finishAttempt(claim.attemptId(), success ? "SUCCEEDED" : "FAILED", attempt);
+            // Delivery row first, attempt row second: the same lock order as the lease reaper, which
+            // locks the delivery and then abandons its attempt. The opposite order deadlocks when a
+            // late result and the reaper meet. If the reaper got there first, the guarded update waits
+            // for it, matches nothing, and finishAttempt then flags the attempt as reported late.
             boolean updated = switch (decision) {
                 case Decision.Deliver d -> deliveries.markDelivered(claim, result.statusCode());
                 case Decision.Retry r -> deliveries.markRetrying(claim, r.delay(), result.statusCode(), error);
                 case Decision.DeadLetter dl -> deliveries.markDeadLettered(claim, dl.reason(), result.statusCode(), error);
             };
+            deliveries.finishAttempt(claim.attemptId(), success ? "SUCCEEDED" : "FAILED", attempt);
             if (updated) {
                 // Same transaction: the circuit's counters always match the recorded attempts.
                 circuits.recordResult(claim.endpointId(), claim.deliveryId(), result.outcome(), result.statusCode());

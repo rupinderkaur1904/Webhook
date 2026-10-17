@@ -35,6 +35,8 @@ import org.apache.hc.core5.http.ContentType;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
 import org.apache.hc.core5.http.io.entity.ByteArrayEntity;
+import org.apache.hc.core5.io.CloseMode;
+import org.apache.hc.core5.io.ModalCloseable;
 import org.apache.hc.core5.util.Timeout;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.stereotype.Component;
@@ -45,7 +47,8 @@ import org.springframework.stereotype.Component;
  *   <li>DNS resolution goes through {@link SsrfDnsResolver}; connections use only checked addresses.</li>
  *   <li>Redirects, cookies, automatic retries and system proxy settings are all disabled.</li>
  *   <li>Connect and per-read timeouts, plus a hard total deadline that aborts slow-dripping responses.</li>
- *   <li>Only the first {@code storedResponseBodyBytes} of the response body are read; the rest is discarded.</li>
+ *   <li>Only the first {@code storedResponseBodyBytes} of the response body are read; if more follows, the
+ *       connection is dropped instead of draining the rest.</li>
  * </ul>
  */
 @Component
@@ -100,7 +103,10 @@ public class WebhookHttpClient implements DisposableBean {
         }, totalTimeout.toMillis(), TimeUnit.MILLISECONDS);
 
         long start = System.nanoTime();
-        try (ClassicHttpResponse response = client.executeOpen(null, request, null)) {
+        ClassicHttpResponse response = null;
+        boolean bodyComplete = false;
+        try {
+            response = client.executeOpen(null, request, null);
             int status = response.getCode();
             Map<String, String> storedHeaders = new LinkedHashMap<>();
             for (Header header : response.getHeaders()) {
@@ -109,8 +115,9 @@ public class WebhookHttpClient implements DisposableBean {
                     storedHeaders.putIfAbsent(name, truncate(header.getValue(), 200));
                 }
             }
-            String excerpt = readExcerpt(response.getEntity());
-            return new HttpAttemptResult(outcomeFor(status), status, storedHeaders, excerpt, null, elapsed(start));
+            Excerpt excerpt = readExcerpt(response.getEntity());
+            bodyComplete = excerpt.complete();
+            return new HttpAttemptResult(outcomeFor(status), status, storedHeaders, excerpt.text(), null, elapsed(start));
         } catch (DestinationBlockedException e) {
             return HttpAttemptResult.failure(AttemptOutcome.DESTINATION_BLOCKED,
                     "Destination resolves to a private, loopback, link-local or reserved address", elapsed(start));
@@ -137,6 +144,28 @@ public class WebhookHttpClient implements DisposableBean {
                     "Connection failed (" + e.getClass().getSimpleName() + ")", elapsed(start));
         } finally {
             deadline.cancel(false);
+            close(response, bodyComplete);
+        }
+    }
+
+    /**
+     * A fully read response returns its connection to the pool. Otherwise the connection is dropped
+     * at once: a graceful close would read (drain) the rest of the body, so a receiver that answers
+     * 2xx and then sends a large or stalling body would hold the attempt until the deadline and turn
+     * an accepted delivery into a timeout.
+     */
+    private static void close(ClassicHttpResponse response, boolean bodyComplete) {
+        if (response == null) {
+            return;
+        }
+        try {
+            if (!bodyComplete && response instanceof ModalCloseable modal) {
+                modal.close(CloseMode.IMMEDIATE);
+            } else {
+                response.close();
+            }
+        } catch (IOException | RuntimeException e) {
+            // The outcome is already decided; the connection is discarded either way.
         }
     }
 
@@ -159,14 +188,22 @@ public class WebhookHttpClient implements DisposableBean {
         return AttemptOutcome.INVALID_RESPONSE;
     }
 
-    private String readExcerpt(HttpEntity entity) throws IOException {
+    private record Excerpt(String text, boolean complete) {}
+
+    /**
+     * Reads at most {@code storedBodyBytes} of the body. The stream is not closed here: closing it
+     * would drain the remainder ({@link #close}).
+     */
+    private Excerpt readExcerpt(HttpEntity entity) throws IOException {
         if (entity == null) {
-            return null;
+            return new Excerpt(null, true);
         }
-        try (InputStream in = entity.getContent()) {
-            byte[] bytes = in.readNBytes(storedBodyBytes);
-            return sanitize(new String(bytes, StandardCharsets.UTF_8));
+        InputStream in = entity.getContent();
+        if (in == null) {
+            return new Excerpt(null, true);
         }
+        byte[] bytes = in.readNBytes(storedBodyBytes);
+        return new Excerpt(sanitize(new String(bytes, StandardCharsets.UTF_8)), bytes.length < storedBodyBytes);
     }
 
     /** Removes control characters (except newline and tab) so stored text is safe to display. */
