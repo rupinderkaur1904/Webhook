@@ -1,10 +1,15 @@
 package dev.webhooks.simulator;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Deque;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +29,9 @@ public class ReceiverRegistry {
     static final int MAX_LOGGED_REQUESTS = 200;
     /** Logged bodies are cut to this many characters (signatures are checked on the full body first). */
     static final int MAX_LOGGED_BODY_CHARS = 8 * 1024;
-    /** Remembered webhook-ids per receiver, for duplicate detection. */
+    /** Logged header values are cut to this many characters. */
+    static final int MAX_LOGGED_HEADER_CHARS = 1024;
+    /** Remembered webhook-ids per receiver, for duplicate detection; each is kept as a fixed-size hash. */
     static final int MAX_REMEMBERED_IDS = 10_000;
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9_-]{1,64}");
     static final int MAX_SCRIPT_STEPS = 100;
@@ -183,14 +190,16 @@ public class ReceiverRegistry {
         /** Records a request, noting whether its webhook-id was seen before (receiver-side dedup). */
         public synchronized ReceivedRequest record(Instant at, String webhookId, String deliveryId, String attempt,
                 String signatureResult, Response response, Map<String, String> headers, String body) {
-            boolean duplicate = webhookId != null && !seenWebhookIds.add(webhookId);
+            // Anyone can post to a public simulator, so nothing remembered may grow with the size of a request.
+            boolean duplicate = webhookId != null && !seenWebhookIds.add(digest(webhookId));
             if (seenWebhookIds.size() > MAX_REMEMBERED_IDS) {
                 seenWebhookIds.remove(seenWebhookIds.iterator().next());
             }
-            String logged = body != null && body.length() > MAX_LOGGED_BODY_CHARS
-                    ? body.substring(0, MAX_LOGGED_BODY_CHARS) + "…[truncated]" : body;
-            ReceivedRequest request = new ReceivedRequest(++sequence, at, webhookId, deliveryId, attempt,
-                    signatureResult, duplicate, response.status(), response.rule(), headers, logged);
+            Map<String, String> loggedHeaders = new LinkedHashMap<>();
+            headers.forEach((name, value) -> loggedHeaders.put(name, cut(value, MAX_LOGGED_HEADER_CHARS)));
+            ReceivedRequest request = new ReceivedRequest(++sequence, at, cut(webhookId, MAX_LOGGED_HEADER_CHARS),
+                    cut(deliveryId, MAX_LOGGED_HEADER_CHARS), cut(attempt, MAX_LOGGED_HEADER_CHARS), signatureResult,
+                    duplicate, response.status(), response.rule(), loggedHeaders, cut(body, MAX_LOGGED_BODY_CHARS));
             log.addLast(request);
             while (log.size() > MAX_LOGGED_REQUESTS) {
                 log.removeFirst();
@@ -200,6 +209,19 @@ public class ReceiverRegistry {
 
         public synchronized List<ReceivedRequest> requests() {
             return new ArrayList<>(log);
+        }
+    }
+
+    private static String cut(String value, int max) {
+        return value != null && value.length() > max ? value.substring(0, max) + "…[truncated]" : value;
+    }
+
+    private static String digest(String webhookId) {
+        try {
+            return Base64.getEncoder().encodeToString(
+                    MessageDigest.getInstance("SHA-256").digest(webhookId.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException(e);
         }
     }
 }

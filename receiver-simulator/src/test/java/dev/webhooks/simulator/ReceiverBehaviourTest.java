@@ -3,15 +3,43 @@ package dev.webhooks.simulator;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import dev.webhooks.simulator.ReceiverRegistry.Behaviour;
+import dev.webhooks.simulator.ReceiverRegistry.ReceivedRequest;
 import dev.webhooks.simulator.ReceiverRegistry.Receiver;
 import dev.webhooks.simulator.ReceiverRegistry.Response;
 import dev.webhooks.simulator.ReceiverRegistry.Step;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class ReceiverBehaviourTest {
+
+    /**
+     * Anyone can post to a public simulator: a large webhook-id or header must not be kept at full size,
+     * or 10,000 remembered ids per receiver exhaust the heap. Duplicates are still told apart by the full id.
+     */
+    @Test
+    void longWebhookIdsAndHeadersAreNotKeptAtFullSize() {
+        Receiver receiver = new Receiver();
+        String prefix = "x".repeat(7000);
+        Response ok = new Response(200, 0L, Map.of(), "default");
+
+        ReceivedRequest first = receiver.record(Instant.now(), prefix + "1", null, null, "NOT_CHECKED", ok,
+                Map.of("webhook-id", prefix + "1", "x-big", "y".repeat(5000)), "{}");
+        ReceivedRequest repeated = receiver.record(Instant.now(), prefix + "1", null, null, "NOT_CHECKED", ok,
+                Map.of(), "{}");
+        ReceivedRequest other = receiver.record(Instant.now(), prefix + "2", null, null, "NOT_CHECKED", ok,
+                Map.of(), "{}");
+
+        assertThat(first.duplicate()).isFalse();
+        assertThat(repeated.duplicate()).isTrue();
+        assertThat(other.duplicate()).isFalse();
+        int cut = ReceiverRegistry.MAX_LOGGED_HEADER_CHARS + "…[truncated]".length();
+        assertThat(first.webhookId()).hasSize(cut).endsWith("…[truncated]");
+        assertThat(first.headers().get("webhook-id")).hasSize(cut);
+        assertThat(first.headers().get("x-big")).hasSize(cut);
+    }
 
     @Test
     void scriptIsConsumedInOrderThenDefaultApplies() {
