@@ -50,6 +50,9 @@ public final class PlatformProcess implements AutoCloseable {
         // Nothing from the parent's configuration leaks in: only what the caller passes.
         builder.environment().keySet().removeIf(k -> k.startsWith("SPRING_") || k.startsWith("WEBHOOKS_")
                 || k.startsWith("DATABASE_") || k.equals("LOG_FORMAT") || k.equals("METRICS_TOKEN"));
+        // These processes share the test PostgreSQL (100 connections) with the cached Spring contexts, and some
+        // tests start several at once; the production default of 20 connections each exhausted it.
+        builder.environment().put("DATABASE_POOL_SIZE", "3");
         builder.environment().putAll(env);
         return new PlatformProcess(builder.start(), output, port);
     }
