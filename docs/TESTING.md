@@ -2,8 +2,8 @@
 
 | Suite | Command | What it needs | Count (last run) |
 |---|---|---|---|
-| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 543 |
-| Receiver simulator | included in `./mvnw verify` | nothing | 79 |
+| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 544 |
+| Receiver simulator | included in `./mvnw verify` | nothing | 80 |
 | Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 56 |
 | API contract and generated types | `OpenApiContractTest` (in `verify`); `npm run gen:api && git diff --exit-code src/api/schema.ts` | | 1 |
 | Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 23 |

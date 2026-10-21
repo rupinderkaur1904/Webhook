@@ -32,7 +32,7 @@ const STEPS: { title: string; code: string; body: string; tone?: 'retry' | 'dead
   {
     title: 'Retry or deliver',
     code: '2xx → DELIVERED',
-    body: 'Timeouts, 408, 429 and most 5xx retry with backoff. Other 4xx are permanent and stop immediately.',
+    body: 'Timeouts, 408, 425, 429 and 5xx except 501 and 505 retry with backoff. Redirects, other 4xx, 501 and 505 are permanent and stop immediately.',
     tone: 'retry',
   },
   {
@@ -413,7 +413,7 @@ function Reliability() {
               Each failed attempt is classified first. Transient failures wait longer each time, with jitter so a recovering endpoint is not
               hit by every retry at once. The schedule is stored on the delivery row, so a restart never forgets it.
             </p>
-            <Bullets items={['408 · 425 · 429 · 5xx → retry', '3xx · other 4xx · 501 · 505 → stop', 'next_attempt_at lives in Postgres']} />
+            <Bullets items={['408 · 425 · 429 · other 5xx → retry', '3xx · other 4xx · 501 · 505 → stop', 'next_attempt_at lives in Postgres']} />
           </div>
           <figure className="lp-chart">
             <figcaption className="lp-chart-head">
