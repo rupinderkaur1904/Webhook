@@ -17,8 +17,18 @@ test('a wrong password is refused and the dashboard stays locked', async ({ page
   expect(response.status()).toBe(401);
 });
 
-test('signing out ends the session on the server', async ({ page }) => {
+test('the landing page is public and leads to sign-in', async ({ page }) => {
   await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1, name: /Every webhook/ })).toBeVisible();
+  await page.getByRole('banner').getByRole('link', { name: 'Open dashboard' }).click();
+  await expect(page).toHaveURL(/\/overview$/);
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await page.getByRole('link', { name: '← Back to Relay overview' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: /Every webhook/ })).toBeVisible();
+});
+
+test('signing out ends the session on the server', async ({ page }) => {
+  await page.goto('/overview');
   await page.getByLabel('Email').fill(ADMIN_EMAIL);
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

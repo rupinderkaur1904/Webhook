@@ -65,9 +65,9 @@ export async function registerEndpointInUi(page: Page, name: string, url: string
   const secret = (await dialog.locator('pre, code').filter({ hasText: 'whsec_' }).first().innerText()).trim();
   await dialog.getByRole('button', { name: 'Done' }).click();
   await expect(dialog).toBeHidden();
-  const row = page.getByRole('row').filter({ hasText: name });
-  await expect(row).toBeVisible();
-  await row.getByRole('link', { name }).click();
+  const item = page.getByRole('listitem').filter({ hasText: name });
+  await expect(item).toBeVisible();
+  await item.getByRole('link', { name, exact: true }).click();
   await expect(page).toHaveURL(/\/endpoints\/[0-9a-f-]{36}$/);
   // The URL changes before the detail page replaces the list; wait for the page itself.
   await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();

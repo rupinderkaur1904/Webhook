@@ -1,4 +1,4 @@
-import { Alert, Anchor, Badge, Button, Card, Code, CopyButton, Group, Modal, NumberInput, SimpleGrid, Stack, Switch, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { Alert, Anchor, Button, Card, Code, CopyButton, Group, Modal, NumberInput, SimpleGrid, Stack, Switch, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -9,6 +9,7 @@ import { DeliveriesTable } from '../components/DeliveriesTable';
 import { EndpointHealthCard } from '../components/EndpointHealthCard';
 import { Field } from '../components/Field';
 import { EmptyState, QueryState } from '../components/QueryState';
+import { Pill, Tag } from '../components/StatusBadge';
 import { Time } from '../components/Time';
 
 /** The form mounts each time the modal opens, so it always starts from the endpoint's current values. */
@@ -136,8 +137,8 @@ export function EndpointDetailPage() {
   const rows = deliveries.data?.pages.flatMap((p) => p.items) ?? [];
 
   return (
-    <Stack>
-      <Anchor component={Link} to="/endpoints" size="sm">
+    <Stack className="page">
+      <Anchor component={Link} to="/endpoints" size="sm" className="back-link">
         ← Endpoints
       </Anchor>
       <QueryState isLoading={endpoint.isLoading} error={endpoint.error} onRetry={() => endpoint.refetch()}>
@@ -146,9 +147,7 @@ export function EndpointDetailPage() {
             <Group justify="space-between">
               <Group>
                 <Title order={2}>{e.name}</Title>
-                <Badge color={e.enabled ? 'green' : 'gray'} variant="light">
-                  {e.enabled ? 'enabled' : 'disabled'}
-                </Badge>
+                <Pill tone={e.enabled ? 'delivered' : 'pending'}>{e.enabled ? 'Enabled' : 'Disabled'}</Pill>
               </Group>
               <Group>
                 <Switch
@@ -186,7 +185,7 @@ export function EndpointDetailPage() {
             <Card withBorder>
               <SimpleGrid cols={{ base: 1, sm: 3 }}>
                 <Field label="URL">
-                  <Text size="sm" style={{ wordBreak: 'break-all' }}>
+                  <Text size="sm" className="mono" style={{ wordBreak: 'break-all' }}>
                     {e.url}
                   </Text>
                 </Field>
@@ -194,9 +193,9 @@ export function EndpointDetailPage() {
                   {e.eventTypes.length === 0
                     ? 'all events'
                     : e.eventTypes.map((t) => (
-                        <Badge key={t} variant="outline" mr={4}>
-                          {t}
-                        </Badge>
+                        <span key={t} className="tag-gap">
+                          <Tag>{t}</Tag>
+                        </span>
                       ))}
                 </Field>
                 <Field label="Signing secret">

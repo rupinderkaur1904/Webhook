@@ -1,8 +1,9 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { Overview } from '../api/types';
 import { OverviewPage } from '../pages/OverviewPage';
+import { deadLetter } from './fixtures';
 import { fetchedUrls, mockApi, renderAt } from './render';
 
 const overview: Overview = {
@@ -70,18 +71,43 @@ const overview: Overview = {
 
 describe('OverviewPage', () => {
   it('shows the metrics from the API with documented rates', async () => {
-    mockApi({ '/api/v1/metrics/overview': overview });
+    mockApi({ '/api/v1/metrics/overview': overview, '/api/v1/deliveries': { items: [], nextCursor: null } });
     renderAt('/overview', '/overview', <OverviewPage />);
 
     expect(await screen.findByText('75.0%')).toBeInTheDocument();
     expect(screen.getByText('60.0%')).toBeInTheDocument();
-    expect(screen.getByText('12')).toBeInTheDocument();
-    expect(screen.getByText('Retries exhausted: 2 · Non-retryable response: 1')).toBeInTheDocument();
+    expect(screen.getByText('2 exhausted · 1 non-retryable')).toBeInTheDocument();
     expect(screen.getByText('35 ms')).toBeInTheDocument();
-    expect(screen.getByText('p50 · p95 410 ms')).toBeInTheDocument();
-    expect(screen.getByText('4 / 1')).toBeInTheDocument();
+    expect(screen.getByText('p95 410 ms')).toBeInTheDocument();
     expect(screen.getByText('RATE_LIMITED')).toBeInTheDocument();
     expect(screen.getByText('429')).toBeInTheDocument();
+  });
+
+  it('draws the pipeline with each count linking to its deliveries', async () => {
+    mockApi({ '/api/v1/metrics/overview': overview, '/api/v1/deliveries': { items: [], nextCursor: null } });
+    renderAt('/overview', '/overview', <OverviewPage />);
+
+    expect(await screen.findByRole('link', { name: '12 events · 24h' })).toHaveAttribute('href', '/events');
+    expect(screen.getByRole('link', { name: '4 pending' })).toHaveAttribute('href', '/deliveries?status=PENDING');
+    expect(screen.getByRole('link', { name: '2 retrying' })).toHaveAttribute('href', '/deliveries?status=RETRYING');
+    expect(screen.getByRole('link', { name: '1 in flight' })).toHaveAttribute('href', '/deliveries?status=IN_FLIGHT');
+    expect(screen.getByRole('link', { name: '9 delivered · 24h' })).toHaveAttribute('href', '/deliveries?status=DELIVERED');
+    expect(screen.getByRole('link', { name: '3 dead-lettered · 24h' })).toHaveAttribute('href', '/dead-letters');
+  });
+
+  it('lists dead letters that need attention, with a replay button', async () => {
+    const fetchMock = mockApi({
+      '/api/v1/metrics/overview': overview,
+      '/api/v1/deliveries': { items: [deadLetter], nextCursor: null },
+    });
+    renderAt('/overview', '/overview', <OverviewPage />);
+
+    const panel = (await screen.findByRole('heading', { name: 'Needs attention' })).closest('section')!;
+    expect(await within(panel).findByRole('link', { name: '11111111' })).toBeInTheDocument();
+    expect(within(panel).getByText('RETRIES_EXHAUSTED · 1/1 · last HTTP 503')).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: 'Replay' })).toBeInTheDocument();
+    expect(within(panel).getByText('2 deliveries waiting to retry')).toBeInTheDocument();
+    expect(fetchedUrls(fetchMock)).toContain('/api/v1/deliveries?limit=50&status=DEAD_LETTERED');
   });
 
   it('lists endpoint health worst first, with open circuits flagged', async () => {
@@ -115,7 +141,7 @@ describe('OverviewPage', () => {
     const fetchMock = mockApi({ '/api/v1/metrics/overview': overview });
     renderAt('/overview', '/overview', <OverviewPage />);
     await screen.findByText('75.0%');
-    await userEvent.click(screen.getByText('Last 7d'));
+    await userEvent.click(screen.getByText('7d'));
     await screen.findByText('75.0%');
     expect(fetchedUrls(fetchMock)).toEqual(
       expect.arrayContaining(['/api/v1/metrics/overview?window=24h', '/api/v1/metrics/overview?window=7d']),

@@ -1,10 +1,12 @@
-import { Alert, Badge, Button, Code, CopyButton, Group, Modal, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { Alert, Button, Code, CopyButton, Group, Modal, Stack, Table, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { errorMessage } from '../api/client';
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '../api/hooks';
 import type { ApiKey } from '../api/types';
+import { PageHeader } from '../components/PageHeader';
 import { EmptyState, QueryState } from '../components/QueryState';
+import { Pill } from '../components/StatusBadge';
 import { Time } from '../components/Time';
 
 function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
@@ -98,56 +100,53 @@ export function ApiKeysPage() {
   const [creating, setCreating] = useState(false);
 
   return (
-    <Stack>
-      <Group justify="space-between">
-        <Title order={2}>API keys</Title>
-        <Button onClick={() => setCreating(true)}>Create API key</Button>
-      </Group>
+    <div className="page">
+      <PageHeader
+        title="API keys"
+        description="Producers authenticate with an API key to submit events. Each key is shown once when it is created."
+        actions={<Button onClick={() => setCreating(true)}>Create API key</Button>}
+      />
       <CreateApiKeyModal opened={creating} onClose={() => setCreating(false)} />
       <QueryState isLoading={keys.isLoading} error={keys.error} onRetry={() => keys.refetch()}>
         {keys.data?.length === 0 ? (
-          <EmptyState title="No API keys">Create one for each system that submits events.</EmptyState>
+          <div className="panel">
+            <EmptyState title="No API keys">Create one for each system that submits events.</EmptyState>
+          </div>
         ) : (
-          <Table striped>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Key</Table.Th>
-                <Table.Th>Created</Table.Th>
-                <Table.Th>Last used</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th />
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {keys.data?.map((k) => (
-                <Table.Tr key={k.id}>
-                  <Table.Td>{k.name}</Table.Td>
-                  <Table.Td>
-                    <Code>{k.prefix}…</Code>
-                  </Table.Td>
-                  <Table.Td>
-                    <Time value={k.createdAt} />
-                  </Table.Td>
-                  <Table.Td>{k.lastUsedAt ? <Time value={k.lastUsedAt} /> : <Text c="dimmed" size="sm">never</Text>}</Table.Td>
-                  <Table.Td>
-                    {k.revokedAt ? (
-                      <Badge color="gray" variant="light">
-                        revoked
-                      </Badge>
-                    ) : (
-                      <Badge color="green" variant="light">
-                        active
-                      </Badge>
-                    )}
-                  </Table.Td>
-                  <Table.Td>{!k.revokedAt && <RevokeButton apiKey={k} />}</Table.Td>
+          <div className="panel table-panel">
+            <Table className="data-table">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Key</Table.Th>
+                  <Table.Th>Created</Table.Th>
+                  <Table.Th>Last used</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th />
                 </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
+              </Table.Thead>
+              <Table.Tbody>
+                {keys.data?.map((k) => (
+                  <Table.Tr key={k.id}>
+                    <Table.Td>{k.name}</Table.Td>
+                    <Table.Td>
+                      <Code>{k.prefix}…</Code>
+                    </Table.Td>
+                    <Table.Td className="mono dim">
+                      <Time value={k.createdAt} />
+                    </Table.Td>
+                    <Table.Td>{k.lastUsedAt ? <Time value={k.lastUsedAt} /> : <Text c="dimmed" size="sm">never</Text>}</Table.Td>
+                    <Table.Td>
+                      {k.revokedAt ? <Pill tone="pending">revoked</Pill> : <Pill tone="delivered">active</Pill>}
+                    </Table.Td>
+                    <Table.Td>{!k.revokedAt && <RevokeButton apiKey={k} />}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </div>
         )}
       </QueryState>
-    </Stack>
+    </div>
   );
 }

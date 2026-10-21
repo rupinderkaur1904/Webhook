@@ -12,8 +12,8 @@ export function EventDetailPage() {
   const event = query.data;
 
   return (
-    <Stack>
-      <Anchor component={Link} to="/events" size="sm">
+    <Stack className="page">
+      <Anchor component={Link} to="/events" size="sm" className="back-link">
         ← Events
       </Anchor>
       <QueryState isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
@@ -47,7 +47,9 @@ export function EventDetailPage() {
               <DeliveriesTable rows={event.deliveries} hide={['event', 'type']} show={['reason', 'replay']} />
             )}
             <Title order={4}>Webhook body</Title>
-            <Code block>{JSON.stringify(event.body, null, 2)}</Code>
+            <Code block className="code-json">
+              {JSON.stringify(event.body, null, 2)}
+            </Code>
           </>
         )}
       </QueryState>

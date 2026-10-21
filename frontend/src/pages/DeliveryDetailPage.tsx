@@ -1,4 +1,4 @@
-import { Alert, Anchor, Badge, Card, Code, Group, SimpleGrid, Stack, Text, Timeline, Title } from '@mantine/core';
+import { Alert, Anchor, Code, Group, Stack, Text, Timeline, Title } from '@mantine/core';
 import { Link, useParams } from 'react-router-dom';
 import { useDelivery } from '../api/hooks';
 import type { Attempt, DeliveryDetail } from '../api/types';
@@ -6,67 +6,48 @@ import { Field } from '../components/Field';
 import { DEAD_LETTER_REASONS, REPLAY_REASONS, shortId } from '../components/labels';
 import { QueryState } from '../components/QueryState';
 import { ReplayButton } from '../components/ReplayButton';
-import { StatusBadge } from '../components/StatusBadge';
+import { Pill, StatusBadge, Tag, type Tone } from '../components/StatusBadge';
 import { Time } from '../components/Time';
 
-const ATTEMPT_COLORS: Record<Attempt['status'], string> = {
-  SUCCEEDED: 'green',
-  STARTED: 'blue',
-  FAILED: 'red',
-  ABANDONED: 'orange',
+const ATTEMPT_TONES: Record<Attempt['status'], Tone> = {
+  SUCCEEDED: 'delivered',
+  STARTED: 'in-flight',
+  FAILED: 'dead-letter',
+  ABANDONED: 'retrying',
 };
 
 function AttemptItem({ attempt }: { attempt: Attempt }) {
+  const tone = ATTEMPT_TONES[attempt.status];
   return (
-    <Stack gap={4}>
-      <Group gap="xs">
-        <Text fw={500}>Attempt {attempt.attemptNumber}</Text>
-        <Badge color={ATTEMPT_COLORS[attempt.status]} variant="light">
-          {attempt.status === 'STARTED' ? 'IN PROGRESS' : attempt.outcome ?? attempt.status}
-        </Badge>
-        {attempt.status === 'ABANDONED' && (
-          <Badge color="orange" variant="outline">
-            abandoned
-          </Badge>
-        )}
-        {attempt.reportedAfterLeaseExpiry && (
-          <Badge color="gray" variant="outline">
-            late result, not applied
-          </Badge>
-        )}
-        {attempt.responseStatus != null && <Badge variant="outline">HTTP {attempt.responseStatus}</Badge>}
-        {attempt.retryable != null && (
-          <Badge color={attempt.retryable ? 'yellow' : 'gray'} variant="dot">
-            {attempt.retryable ? 'retryable' : 'not retryable'}
-          </Badge>
-        )}
-        {attempt.durationMs != null && (
-          <Text size="xs" c="dimmed">
-            {attempt.durationMs} ms
-          </Text>
-        )}
-      </Group>
-      <Text size="xs" c="dimmed">
+    <li className={`timeline-item timeline-${tone}`}>
+      <div className="timeline-head">
+        <strong>Attempt {attempt.attemptNumber}</strong>
+        <Tag tone={tone}>{attempt.status === 'STARTED' ? 'IN PROGRESS' : attempt.outcome ?? attempt.status}</Tag>
+        {attempt.status === 'ABANDONED' && <Tag tone="retrying">abandoned</Tag>}
+        {attempt.reportedAfterLeaseExpiry && <Tag>late result, not applied</Tag>}
+        {attempt.responseStatus != null && <Tag>HTTP {attempt.responseStatus}</Tag>}
+        {attempt.retryable != null && <Tag tone={attempt.retryable ? 'retrying' : undefined}>{attempt.retryable ? 'retryable' : 'not retryable'}</Tag>}
+        {attempt.durationMs != null && <span className="timeline-ms">{attempt.durationMs} ms</span>}
+      </div>
+      <div className="timeline-meta">
         <Time value={attempt.startedAt} /> · {attempt.requestUrl}
-      </Text>
+      </div>
       {attempt.retryAfterSeconds != null && (
-        <Text size="xs" c="dimmed">
-          Receiver asked to retry after {attempt.retryAfterSeconds}s (Retry-After)
-        </Text>
+        <div className="timeline-note">Receiver asked to retry after {attempt.retryAfterSeconds}s (Retry-After)</div>
       )}
       {attempt.reportedAfterLeaseExpiry && (
-        <Text size="xs" c="dimmed">
+        <div className="timeline-note dim">
           The worker's lease expired before it reported, so this attempt was abandoned and the delivery moved on. The
           worker later reported what it saw; it is shown here but did not change the delivery.
-        </Text>
+        </div>
       )}
-      {attempt.errorMessage && (
-        <Text size="sm" c="red">
-          {attempt.errorMessage}
-        </Text>
+      {attempt.errorMessage && <div className="timeline-error">{attempt.errorMessage}</div>}
+      {attempt.responseBodyExcerpt && (
+        <Code block className="timeline-body">
+          {attempt.responseBodyExcerpt}
+        </Code>
       )}
-      {attempt.responseBodyExcerpt && <Code block>{attempt.responseBodyExcerpt}</Code>}
-    </Stack>
+    </li>
   );
 }
 
@@ -91,7 +72,7 @@ function ReplaySection({ detail }: { detail: DeliveryDetail }) {
       {chain.length > 1 && (
         <>
           <Title order={4}>Replay chain</Title>
-          <Timeline bulletSize={12} lineWidth={2} active={chain.findIndex((d) => d.id === delivery.id)}>
+          <Timeline bulletSize={12} lineWidth={2} color="violet" active={chain.findIndex((d) => d.id === delivery.id)}>
             {chain.map((d) => (
               <Timeline.Item key={d.id}>
                 <Group gap="xs">
@@ -130,88 +111,153 @@ export function DeliveryDetailPage() {
   const { id = '' } = useParams();
   const query = useDelivery(id);
   const detail = query.data;
+  const d = detail?.delivery;
 
   return (
-    <Stack>
-      <Anchor component={Link} to="/deliveries" size="sm">
-        ← Deliveries
-      </Anchor>
+    <div className="page">
+      <p className="crumbs">
+        <Anchor component={Link} to="/deliveries" c="dimmed" size="sm">
+          Deliveries
+        </Anchor>
+        <span aria-hidden="true">/</span>
+        <span className="mono">{shortId(id)}</span>
+      </p>
       <QueryState isLoading={query.isLoading} error={query.error} onRetry={() => query.refetch()}>
-        {detail && (
+        {detail && d && (
           <>
-            <Group>
-              <Title order={2}>Delivery</Title>
-              <StatusBadge status={detail.delivery.status} />
-              {detail.delivery.replayOfDeliveryId && (
-                <Badge variant="outline" color="grape">
-                  replay of {shortId(detail.delivery.replayOfDeliveryId)}
-                </Badge>
+            <div className="detail-title">
+              <Title order={2}>
+                Delivery <span className="mono-title">{shortId(d.id)}</span>
+              </Title>
+              <StatusBadge status={d.status} />
+              {d.replayOfDeliveryId && (
+                <Pill tone="replay" dot={false}>
+                  replay of {shortId(d.replayOfDeliveryId)}
+                </Pill>
               )}
-            </Group>
-            <Card withBorder>
-              <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                <Field label="Delivery ID">
-                  <Code>{detail.delivery.id}</Code>
-                </Field>
-                <Field label="Event ID (webhook-id)">
-                  <Anchor component={Link} to={`/events/${detail.delivery.eventId}`} ff="monospace" size="sm">
-                    {detail.delivery.eventId}
+            </div>
+            <div className="summary-strip">
+              <div>
+                <span>Event type</span>
+                <strong className="mono">{d.eventType}</strong>
+              </div>
+              <div>
+                <span>Endpoint</span>
+                <strong>
+                  <Anchor component={Link} to={`/endpoints/${d.endpointId}`} size="sm" fw={500}>
+                    {d.endpointName}
                   </Anchor>
+                </strong>
+              </div>
+              <div>
+                <span>Attempts</span>
+                <strong className="mono">
+                  {d.attemptCount} of {d.maxAttempts}
+                </strong>
+              </div>
+              {d.status === 'RETRYING' ? (
+                <div>
+                  <span>Next attempt</span>
+                  <strong className="mono">
+                    <Time value={d.nextAttemptAt} format="time" />
+                  </strong>
+                </div>
+              ) : d.deliveredAt ? (
+                <div>
+                  <span>Delivered</span>
+                  <strong className="mono">
+                    <Time value={d.deliveredAt} format="time" />
+                  </strong>
+                </div>
+              ) : d.deadLetterReason ? (
+                <div>
+                  <span>Dead-letter reason</span>
+                  <strong>{DEAD_LETTER_REASONS[d.deadLetterReason]}</strong>
+                </div>
+              ) : (
+                <div>
+                  <span>Created</span>
+                  <strong className="mono">
+                    <Time value={d.createdAt} format="time" />
+                  </strong>
+                </div>
+              )}
+              <div>
+                <span>Event ID (webhook-id)</span>
+                <strong>
+                  <Anchor component={Link} to={`/events/${d.eventId}`} className="mono" size="sm" c="inherit">
+                    {d.eventId}
+                  </Anchor>
+                </strong>
+              </div>
+            </div>
+            <div className="detail-facts">
+              <Field label="Delivery ID">
+                <span className="mono">{d.id}</span>
+              </Field>
+              <Field label="Endpoint URL">
+                <span className="mono">{detail.endpointUrl}</span>
+              </Field>
+              <Field label="Created">
+                <Time value={d.createdAt} />
+              </Field>
+              {detail.lease && (
+                <Field label="In flight on">
+                  {detail.lease.owner} · lease until <Time value={detail.lease.expiresAt} />
                 </Field>
-                <Field label="Event type">{detail.delivery.eventType}</Field>
-                <Field label="Endpoint">
-                  <Anchor component={Link} to={`/endpoints/${detail.delivery.endpointId}`} size="sm">
-                    {detail.delivery.endpointName}
-                  </Anchor>{' '}
-                  ({detail.endpointUrl})
-                </Field>
-                <Field label="Attempts">
-                  {detail.delivery.attemptCount} of {detail.delivery.maxAttempts}
-                </Field>
-                <Field label="Created">
-                  <Time value={detail.delivery.createdAt} />
-                </Field>
-                {detail.lease && (
-                  <Field label="In flight on">
-                    {detail.lease.owner} · lease until <Time value={detail.lease.expiresAt} />
-                  </Field>
-                )}
-                {detail.delivery.status === 'RETRYING' && (
-                  <Field label="Next attempt">
-                    <Time value={detail.delivery.nextAttemptAt} />
-                  </Field>
-                )}
-                {detail.delivery.deadLetterReason && (
-                  <Field label="Dead-letter reason">{DEAD_LETTER_REASONS[detail.delivery.deadLetterReason]}</Field>
-                )}
-                {detail.delivery.lastError && <Field label="Last error">{detail.delivery.lastError}</Field>}
-                {detail.delivery.deliveredAt && (
-                  <Field label="Delivered">
-                    <Time value={detail.delivery.deliveredAt} />
-                  </Field>
-                )}
-              </SimpleGrid>
-            </Card>
+              )}
+              {d.lastError && <Field label="Last error">{d.lastError}</Field>}
+            </div>
             <ReplaySection detail={detail} />
-            <Title order={4}>Attempt history</Title>
-            {detail.attempts.length === 0 ? (
-              <Text c="dimmed" size="sm">
-                No attempts yet. The worker picks up due deliveries within a second.
-              </Text>
-            ) : (
-              <Timeline bulletSize={14} lineWidth={2}>
-                {detail.attempts.map((a) => (
-                  <Timeline.Item key={a.id} color={ATTEMPT_COLORS[a.status]}>
-                    <AttemptItem attempt={a} />
-                  </Timeline.Item>
-                ))}
-              </Timeline>
-            )}
-            <Title order={4}>Payload sent</Title>
-            <Code block>{JSON.stringify(detail.eventBody, null, 2)}</Code>
+            <div className="detail-columns">
+              <section aria-labelledby="attempts-title">
+                <h3 id="attempts-title" className="section-title">
+                  Attempt history
+                </h3>
+                {detail.attempts.length === 0 ? (
+                  <Text c="dimmed" size="sm">
+                    No attempts yet. The worker picks up due deliveries within a second.
+                  </Text>
+                ) : (
+                  <ol className="timeline">
+                    {detail.attempts.map((a) => (
+                      <AttemptItem key={a.id} attempt={a} />
+                    ))}
+                    {d.status === 'RETRYING' && d.nextAttemptAt && (
+                      <li className="timeline-item">
+                        <div className="timeline-head">
+                          <strong>Scheduled retry</strong>
+                          <Tag tone="pending">#{d.attemptCount + 1}</Tag>
+                        </div>
+                        <div className="timeline-meta">
+                          <Time value={d.nextAttemptAt} /> · {detail.endpointUrl}
+                        </div>
+                        <div className="timeline-note dim">Waiting for its next_attempt_at</div>
+                      </li>
+                    )}
+                  </ol>
+                )}
+              </section>
+              <section className="code-panel" aria-labelledby="payload-title">
+                <div className="code-panel-head">
+                  <h3 id="payload-title">Payload sent</h3>
+                  <span className="mono dim">application/json</span>
+                </div>
+                <pre className="code-json">{JSON.stringify(detail.eventBody, null, 2)}</pre>
+                <div className="code-panel-sub">Signed headers</div>
+                <dl className="kv-mono">
+                  <dt>webhook-id</dt>
+                  <dd>{d.eventId}</dd>
+                  <dt>X-Webhook-Delivery-Id</dt>
+                  <dd>{d.id}</dd>
+                  <dt>webhook-signature</dt>
+                  <dd>v1,… (HMAC-SHA256)</dd>
+                </dl>
+              </section>
+            </div>
           </>
         )}
       </QueryState>
-    </Stack>
+    </div>
   );
 }

@@ -83,7 +83,8 @@ On a fresh database you will see Flyway apply the 5 migrations (`Successfully ap
 
 | What | URL |
 |---|---|
-| **Dashboard** | http://localhost:8080 |
+| **Landing page** | http://localhost:8080 |
+| **Dashboard** | http://localhost:8080/overview |
 | API documentation (Swagger UI) | http://localhost:8080/swagger-ui.html |
 | OpenAPI document | http://localhost:8080/v3/api-docs |
 | Health check | http://localhost:8080/actuator/health |
@@ -105,7 +106,7 @@ Follow these steps in order. Steps that change the simulator's behaviour use Pow
 
 ### 5.1 Sign in
 
-1. Open http://localhost:8080. You land on the sign-in page.
+1. Open http://localhost:8080. You see the Relay landing page. Click **Open dashboard**: you land on the sign-in page.
 2. Try a wrong password first: you get an error and stay on the sign-in page.
 3. Sign in with `dev@localhost` / `local-dev-password`. You land on **Overview**.
 
@@ -126,7 +127,7 @@ Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json"
 2. Name: `Orders`. URL: **`http://simulator:9090/receivers/orders`**
    - The URL must end in `/receivers/<name>`. `<name>` can be anything (letters, digits, `-`, `_`) and the simulator creates that receiver on first use; the commands in this guide use `orders`. The bare address `http://simulator:9090` is the simulator itself, not a receiver: deliveries to it get `HTTP 404` and are dead-lettered at once, because a 4xx is a permanent failure.
    - Use `simulator`, not `localhost`: the platform runs inside Docker and reaches the simulator by its service name. For safety the platform refuses private and local addresses; the local setup allows only the simulator.
-3. Click **Register**. The **signing secret** (`whsec_…`) is shown **once**. Click **Copy secret**, then **Done**.
+3. Click **Register**. The **signing secret** (`whsec_…`) is shown **once**. Click **Copy**, then **Done**.
 4. Give the secret to the simulator so it can check signatures. Replace the value between the quotes with the secret you copied:
 
 ```powershell
@@ -149,7 +150,7 @@ Invoke-RestMethod -Method Post -Uri "$api/events" -Headers $key -ContentType "ap
 
 Then:
 
-1. Open **Deliveries**. The delivery shows **DELIVERED** with 1 attempt and HTTP 200.
+1. Open **Deliveries**. The delivery shows **Delivered** with 1 attempt and HTTP 200.
 2. Click the delivery id. The detail page shows the attempt history, the exact payload sent and the event id (`webhook-id`).
 3. Open http://localhost:9090/receivers/orders/requests. The simulator logged the request with `"signatureResult": "VALID"`: it verified the signature with the secret independently.
 
@@ -163,7 +164,7 @@ Script the simulator to fail twice with `500`, then succeed:
 Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json" -Body (@{ status = 200; secret = $secret; script = @(@{ status = 500 }, @{ status = 500 }) } | ConvertTo-Json -Depth 4)
 ```
 
-Click **Send test event** again and open the new delivery from **Deliveries**. Within about 10 seconds it goes **RETRYING**, then **DELIVERED** on **attempt 3**: two `HTTP 500` attempts marked *retryable*, then `HTTP 200`. The local setup uses short delays (2 s base, exponential with jitter) so you can watch it happen; production waits longer.
+Click **Send test event** again and open the new delivery from **Deliveries**. Within about 10 seconds it goes **Retrying**, then **Delivered** on **attempt 3**: two `HTTP 500` attempts marked *retryable*, then `HTTP 200`. The local setup uses short delays (2 s base, exponential with jitter) so you can watch it happen; production waits longer.
 
 ### 5.6 Dead letters: the receiver keeps failing
 
@@ -173,7 +174,7 @@ Make the receiver fail every time:
 Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json" -Body (@{ status = 503; secret = $secret } | ConvertTo-Json)
 ```
 
-Send another test event. The local setup gives up after 4 attempts, which takes about 15 to 30 seconds. The delivery then shows **DEAD LETTERED** with the reason *Retries exhausted* and appears on the **Dead letters** page.
+Send another test event. The local setup gives up after 4 attempts, which takes about 15 to 30 seconds. The delivery then shows **Dead letter** with the reason *Retries exhausted* and appears on the **Dead letters** page.
 
 A `400` from the receiver is different: it is treated as permanent and dead-lettered after one attempt, with no retries. Try it with `status = 400` if you like.
 
@@ -185,8 +186,8 @@ A `400` from the receiver is different: it is treated as permanent and dead-lett
    Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json" -Body (@{ status = 200; secret = $secret } | ConvertTo-Json)
    ```
 
-2. On **Dead letters**, click **Replay** on the delivery. You see *Replay queued as a new delivery*.
-3. Open the original delivery: it stays **DEAD LETTERED** (history is never rewritten) and its **Replay chain** shows the new delivery, which becomes **DELIVERED**.
+2. On **Dead letters**, click **Replay** on the delivery. A side panel shows what the replay sends (same `webhook-id`, the endpoint's current URL, a fresh retry budget). Click **Replay delivery**. You see *Replay queued as a new delivery*.
+3. Open the original delivery: it stays **Dead letter** (history is never rewritten) and its **Replay chain** shows the new delivery, which becomes **Delivered**.
 4. The simulator's request log shows the replay carries the **same `webhook-id`** as the original attempts, so a real receiver can recognise it as the same event.
 
 ### 5.8 Secret rotation

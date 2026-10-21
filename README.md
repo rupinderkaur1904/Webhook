@@ -15,7 +15,7 @@ git checkout stage-7-release
 docker compose up -d --build
 ```
 
-Open http://localhost:8080 and sign in with `dev@localhost` / `local-dev-password`. The receiver simulator is at http://localhost:9090.
+Open http://localhost:8080 for the landing page, or http://localhost:8080/overview to sign in to the dashboard with `dev@localhost` / `local-dev-password`. The receiver simulator is at http://localhost:9090.
 
 **[docs/LOCAL-TESTING.md](docs/LOCAL-TESTING.md)** is the step-by-step guide (written for Windows 11): prerequisites, URLs, a manual walkthrough of every feature, and how to stop and restart without losing data.
 

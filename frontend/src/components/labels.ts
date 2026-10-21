@@ -21,3 +21,10 @@ export function shortId(id: string) {
 export function percent(rate: number | null) {
   return rate == null ? '—' : `${(rate * 100).toFixed(1)}%`;
 }
+
+/** Compact reason names for counts, e.g. "5 exhausted · 2 non-retryable". */
+export const DEAD_LETTER_SHORT: Record<DeadLetterReason, string> = {
+  RETRIES_EXHAUSTED: 'exhausted',
+  NON_RETRYABLE_RESPONSE: 'non-retryable',
+  DESTINATION_BLOCKED: 'blocked',
+};

@@ -42,7 +42,7 @@ test('an event is delivered, signed, and shown in the dashboard', async ({ page,
 
   await page.goto(`/deliveries/${deliveryId}`);
   await expect(page.getByRole('heading', { name: 'Delivery' })).toBeVisible();
-  await expect(page.getByText('DELIVERED', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Delivered', { exact: true }).first()).toBeVisible();
   await expect(page.getByText('Attempt 1')).toBeVisible();
   await expect(page.getByText('HTTP 200')).toBeVisible();
 
@@ -75,13 +75,16 @@ test('an exhausted delivery is dead-lettered and can be replayed from the dashbo
 
   await page.goto('/dead-letters');
   await expect(page.getByRole('heading', { name: 'Dead letters' })).toBeVisible();
-  const row = page.getByRole('row').filter({ hasText: receiver });
-  await expect(row).toBeVisible();
-  await expect(row.getByText('DEAD LETTERED')).toBeVisible();
+  const card = page.getByRole('article').filter({ hasText: receiver });
+  await expect(card).toBeVisible();
+  await expect(card.getByText('Dead letter', { exact: true })).toBeVisible();
 
-  // The receiver is fixed; the operator replays.
+  // The receiver is fixed; the operator replays after confirming in the side panel.
   await configureReceiver(request, receiver, { status: 200 });
-  await row.getByRole('button', { name: 'Replay' }).click();
+  await card.getByRole('button', { name: 'Replay' }).click();
+  const panel = page.getByRole('dialog');
+  await expect(panel.getByText('same as the original')).toBeVisible();
+  await panel.getByRole('button', { name: 'Replay delivery' }).click();
   await expect(page.getByText('Replay queued as a new delivery')).toBeVisible();
 
   await page.goto(`/deliveries/${deliveryId}`);
@@ -104,7 +107,7 @@ test('a URL without a receiver path is explained, fixed with Edit, and the dead 
 
   await page.getByRole('button', { name: 'Send test event' }).click();
   await expect(page.getByText('Test event queued')).toBeVisible();
-  const row = page.getByRole('row').filter({ hasText: 'DEAD LETTERED' });
+  const row = page.getByRole('row').filter({ hasText: 'Dead letter' });
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.getByRole('link').first().click();
   await expect(page.getByText('HTTP 404').first()).toBeVisible();
