@@ -2241,3 +2241,25 @@ body {
     left: 16px;
   }
 }
+
+/* ---- Publish event result -------------------------------------------------------------------- */
+.publish-result {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--dark-border);
+  border-radius: 8px;
+}
+.publish-result li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+.publish-result li + li {
+  border-top: 1px solid var(--dark-border);
+}
+.mantine-Text-root a {
+  color: var(--accent-teal);
+}

@@ -3,6 +3,7 @@ import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { errorMessage } from '../api/client';
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '../api/hooks';
+import { useSingleFlight } from '../api/useSingleFlight';
 import type { ApiKey } from '../api/types';
 import { PageHeader } from '../components/PageHeader';
 import { EmptyState, QueryState } from '../components/QueryState';
@@ -13,6 +14,7 @@ function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () =
   const [name, setName] = useState('');
   const [key, setKey] = useState<string | null>(null);
   const create = useCreateApiKey();
+  const createOnce = useSingleFlight(create);
   // The form resets once the closing animation has finished, so the shown-once value never flashes back to the form.
   const reset = () => {
     setName('');
@@ -39,7 +41,7 @@ function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () =
         <form
           onSubmit={(e) => {
             e.preventDefault();
-            create.mutate(name.trim(), { onSuccess: (r) => setKey(r.key) });
+            createOnce(name.trim(), { onSuccess: (r) => setKey(r.key) });
           }}
         >
           <Stack>
@@ -61,6 +63,7 @@ function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () =
 function RevokeButton({ apiKey }: { apiKey: ApiKey }) {
   const [confirming, setConfirming] = useState(false);
   const revoke = useRevokeApiKey();
+  const revokeOnce = useSingleFlight(revoke);
   return (
     <>
       <Button size="xs" color="red" variant="light" onClick={() => setConfirming(true)}>
@@ -77,7 +80,7 @@ function RevokeButton({ apiKey }: { apiKey: ApiKey }) {
               color="red"
               loading={revoke.isPending}
               onClick={() =>
-                revoke.mutate(apiKey.id, {
+                revokeOnce(apiKey.id, {
                   onSuccess: () => {
                     setConfirming(false);
                     notifications.show({ color: 'green', message: `Revoked ${apiKey.name}` });

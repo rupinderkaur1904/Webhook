@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import type { Overview } from '../api/types';
 import { OverviewPage } from '../pages/OverviewPage';
-import { deadLetter } from './fixtures';
+import { deadLetter, deliveredDetail } from './fixtures';
 import { fetchedUrls, mockApi, renderAt } from './render';
 
 const overview: Overview = {
@@ -108,6 +108,33 @@ describe('OverviewPage', () => {
     expect(within(panel).getByRole('button', { name: 'Replay' })).toBeInTheDocument();
     expect(within(panel).getByText('2 deliveries waiting to retry')).toBeInTheDocument();
     expect(fetchedUrls(fetchMock)).toContain('/api/v1/deliveries?limit=50&status=DEAD_LETTERED');
+  });
+
+  it('shows the dates of a window that starts on an earlier day, not two equal clock times', async () => {
+    mockApi({ '/api/v1/metrics/overview': overview, '/api/v1/deliveries': { items: [], nextCursor: null } });
+    renderAt('/overview', '/overview', <OverviewPage />);
+
+    const start = new Date(overview.windowStart).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    expect(await screen.findByText(start)).toBeInTheDocument();
+  });
+
+  it('asks for confirmation before replaying from Needs attention', async () => {
+    const fetchMock = mockApi({
+      '/api/v1/metrics/overview': overview,
+      [`/api/v1/deliveries/${deadLetter.id}`]: {
+        ...deliveredDetail,
+        delivery: deadLetter,
+        chain: [deadLetter],
+        replayEligibility: { eligible: true, reason: null, replayCount: 0, maxReplays: 10 },
+      },
+      '/api/v1/deliveries': { items: [deadLetter], nextCursor: null },
+    });
+    renderAt('/overview', '/overview', <OverviewPage />);
+
+    const panel = (await screen.findByRole('heading', { name: 'Needs attention' })).closest('section')!;
+    await userEvent.click(await within(panel).findByRole('button', { name: 'Replay' }));
+    expect(await screen.findByRole('dialog', { name: 'Replay 11111111?' })).toBeInTheDocument();
+    expect(fetchedUrls(fetchMock).some((u) => u.endsWith('/replay'))).toBe(false);
   });
 
   it('lists endpoint health worst first, with open circuits flagged', async () => {

@@ -124,6 +124,7 @@ test('a URL without a receiver path is explained, fixed with Edit, and the dead 
 
   await page.goto(deadLetterUrl);
   await page.getByRole('button', { name: 'Replay' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Replay delivery' }).click();
   await expect(page.getByText('Replay queued as a new delivery')).toBeVisible();
   await expect.poll(async () => (await receivedRequests(request, receiver)).at(-1)?.signatureResult, { timeout: 30_000 }).toBe('VALID');
   expect((await receivedRequests(request, receiver)).at(-1)?.respondedWith).toBe(200);

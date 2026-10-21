@@ -4,6 +4,7 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { errorMessage } from '../api/client';
 import { useCreateEndpoint, useEndpoints, useSendTestEvent, useSetEndpointEnabled } from '../api/hooks';
+import { useSingleFlight } from '../api/useSingleFlight';
 import type { EndpointCreated } from '../api/types';
 import { CheckIcon, ChevronRightIcon, LockIcon } from '../components/Icons';
 import { percent } from '../components/labels';
@@ -40,6 +41,7 @@ export function SecretShownOnce({ secret, prefix, children }: { secret: string; 
 
 function CreateEndpointModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const create = useCreateEndpoint();
+  const createOnce = useSingleFlight(create);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [eventTypes, setEventTypes] = useState('');
@@ -89,7 +91,7 @@ function CreateEndpointModal({ opened, onClose }: { opened: boolean; onClose: ()
               .split(',')
               .map((t) => t.trim())
               .filter(Boolean);
-            create.mutate({ name, url, eventTypes: types }, { onSuccess: (r) => setCreated(r) });
+            createOnce({ name, url, eventTypes: types }, { onSuccess: (r) => setCreated(r) });
           }}
         >
           <Stack>
@@ -181,7 +183,12 @@ export function EndpointsPage() {
                   <Switch
                     aria-label={`Enable ${endpoint.name}`}
                     checked={endpoint.enabled}
-                    onChange={(e) => setEnabled.mutate({ id: endpoint.id, enabled: e.currentTarget.checked })}
+                    onChange={(e) =>
+                      setEnabled.mutate(
+                        { id: endpoint.id, enabled: e.currentTarget.checked },
+                        { onError: (err) => notifications.show({ color: 'red', message: errorMessage(err) }) },
+                      )
+                    }
                   />
                   <Button
                     size="xs"

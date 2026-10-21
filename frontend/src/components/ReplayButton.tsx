@@ -1,14 +1,14 @@
 import { Button, Tooltip } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { errorMessage } from '../api/client';
-import { useReplay } from '../api/hooks';
 import type { ReplayEligibility } from '../api/types';
 import { REPLAY_REASONS } from './labels';
+import { ReplayDrawer } from './ReplayDrawer';
 
 /**
- * Replays a dead-lettered delivery. When eligibility is known the button is disabled with the
- * reason; otherwise the server decides and a rejection is shown as a notification.
+ * Opens the replay confirmation panel for a dead-lettered delivery, so every Replay button in the
+ * dashboard asks before sending. When eligibility is known the button is disabled with the reason;
+ * otherwise the panel shows it.
  */
 export function ReplayButton({
   deliveryId,
@@ -21,34 +21,28 @@ export function ReplayButton({
   openAfter?: boolean;
   size?: 'xs' | 'sm';
 }) {
-  const replay = useReplay();
+  const [confirming, setConfirming] = useState(false);
   const navigate = useNavigate();
   const blocked = eligibility && !eligibility.eligible;
   const button = (
-    <Button
-      size={size}
-      variant="light"
-      disabled={blocked}
-      loading={replay.isPending}
-      onClick={() =>
-        replay.mutate(deliveryId, {
-          onSuccess: (created) => {
-            notifications.show({ color: 'green', message: 'Replay queued as a new delivery' });
-            if (openAfter) navigate(`/deliveries/${created.id}`);
-          },
-          onError: (e) => notifications.show({ color: 'red', title: 'Replay rejected', message: errorMessage(e) }),
-        })
-      }
-    >
+    <Button size={size} variant="light" disabled={blocked} onClick={() => setConfirming(true)}>
       Replay
     </Button>
   );
-  if (blocked && eligibility.reason) {
-    return (
-      <Tooltip label={REPLAY_REASONS[eligibility.reason]}>
-        <span>{button}</span>
-      </Tooltip>
-    );
-  }
-  return button;
+  return (
+    <>
+      {blocked && eligibility.reason ? (
+        <Tooltip label={REPLAY_REASONS[eligibility.reason]}>
+          <span>{button}</span>
+        </Tooltip>
+      ) : (
+        button
+      )}
+      <ReplayDrawer
+        deliveryId={confirming ? deliveryId : null}
+        onClose={() => setConfirming(false)}
+        onReplayed={(created) => openAfter && navigate(`/deliveries/${created.id}`)}
+      />
+    </>
+  );
 }

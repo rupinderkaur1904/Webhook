@@ -413,7 +413,7 @@ function Reliability() {
               Each failed attempt is classified first. Transient failures wait longer each time, with jitter so a recovering endpoint is not
               hit by every retry at once. The schedule is stored on the delivery row, so a restart never forgets it.
             </p>
-            <Bullets items={['408 · 425 · 429 · 5xx → retry', 'other 4xx · 3xx → stop', 'next_attempt_at lives in Postgres']} />
+            <Bullets items={['408 · 425 · 429 · 5xx → retry', '3xx · other 4xx · 501 · 505 → stop', 'next_attempt_at lives in Postgres']} />
           </div>
           <figure className="lp-chart">
             <figcaption className="lp-chart-head">

@@ -1,7 +1,7 @@
 import { MultiSelect, Select, TextInput, UnstyledButton } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
 import { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useDeliveries, useEndpoints, useOverview } from '../api/hooks';
 import type { DeliveryFilter, DeliveryStatus, Overview } from '../api/types';
 import { DeliveriesTable } from '../components/DeliveriesTable';
@@ -130,7 +130,13 @@ export function DeliveriesPage() {
         {rows.length === 0 ? (
           <div className="panel">
             <EmptyState title="No deliveries">
-              {filtered ? 'Nothing matches these filters.' : 'Submit an event or send a test event from Endpoints.'}
+              {filtered ? (
+                'Nothing matches these filters.'
+              ) : (
+                <>
+                  Publish an event from <Link to="/events">Events</Link>, or send a test event from <Link to="/endpoints">Endpoints</Link>.
+                </>
+              )}
             </EmptyState>
           </div>
         ) : (

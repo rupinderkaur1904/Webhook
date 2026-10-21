@@ -113,7 +113,7 @@ export function OverviewPage() {
           o ? (
             <span className="live">
               <span className="live-dot" aria-hidden="true" />
-              Refreshes every 5 s · window <Time value={o.windowStart} format="time" /> → <Time value={o.windowEnd} format="time" /> (last{' '}
+              Refreshes every 5 s · window <Time value={o.windowStart} format="short" /> → <Time value={o.windowEnd} format="short" /> (last{' '}
               {window})
             </span>
           ) : (

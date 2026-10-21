@@ -1,10 +1,12 @@
 import { Anchor, Button, Group, Table, Text, TextInput } from '@mantine/core';
 import { useDebouncedCallback } from '@mantine/hooks';
+import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useEvents } from '../api/hooks';
 import { shortId } from '../components/labels';
 import { SearchIcon } from '../components/Icons';
 import { PageHeader } from '../components/PageHeader';
+import { PublishEventModal } from '../components/PublishEventModal';
 import { EmptyState, QueryState } from '../components/QueryState';
 import { Pill } from '../components/StatusBadge';
 import { Time } from '../components/Time';
@@ -13,6 +15,7 @@ export function EventsPage() {
   const [params, setParams] = useSearchParams();
   const eventType = params.get('eventType') ?? undefined;
   const events = useEvents(eventType);
+  const [publishing, setPublishing] = useState(false);
   const rows = events.data?.pages.flatMap((p) => p.items) ?? [];
   const updateType = useDebouncedCallback(
     (value: string) => setParams(value.trim() ? { eventType: value.trim() } : {}),
@@ -21,7 +24,12 @@ export function EventsPage() {
 
   return (
     <div className="page">
-      <PageHeader title="Events" description="Every accepted event, newest first. Each fans out to one delivery per matching endpoint." />
+      <PageHeader
+        title="Events"
+        description="Every accepted event, newest first. Each fans out to one delivery per matching endpoint."
+        actions={<Button onClick={() => setPublishing(true)}>Publish event</Button>}
+      />
+      <PublishEventModal opened={publishing} onClose={() => setPublishing(false)} />
       <TextInput
         label="Event type"
         placeholder="e.g. order.created"
@@ -34,7 +42,9 @@ export function EventsPage() {
         {rows.length === 0 ? (
           <div className="panel">
             <EmptyState title="No events">
-              {eventType ? 'No events of this type.' : 'Submit an event with POST /api/v1/events, or send a test event from an endpoint.'}
+              {eventType
+                ? 'No events of this type.'
+                : 'Publish one with the button above, or from your service with POST /api/v1/events and an API key.'}
             </EmptyState>
           </div>
         ) : (

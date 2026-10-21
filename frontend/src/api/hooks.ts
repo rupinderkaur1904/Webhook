@@ -102,6 +102,39 @@ export function useSendTestEvent() {
   });
 }
 
+export type PublishEvent = { eventType: string; payload: Record<string, unknown>; endpointIds?: string[]; idempotencyKey: string };
+
+/** Submits an event from the dashboard, exactly as a producer would (the session stands in for an API key). */
+export function usePublishEvent() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ idempotencyKey, ...body }: PublishEvent) =>
+      api<EventAccepted>('/api/v1/events', {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['events'] });
+      client.invalidateQueries({ queryKey: ['deliveries'] });
+      client.invalidateQueries({ queryKey: ['overview'] });
+    },
+  });
+}
+
+/** Removes an endpoint. Queued deliveries to it are cancelled; its history stays. */
+export function useDeleteEndpoint() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api<void>(`/api/v1/endpoints/${id}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: ['endpoints'] });
+      client.invalidateQueries({ queryKey: ['deliveries'] });
+      client.invalidateQueries({ queryKey: ['overview'] });
+    },
+  });
+}
+
 export function deliveryQueryString(filter: DeliveryFilter, cursor: string | null) {
   const params = new URLSearchParams({ limit: '50' });
   filter.statuses?.forEach((s) => params.append('status', s));

@@ -1,9 +1,18 @@
 import { Alert, Anchor, Button, Card, Code, CopyButton, Group, Modal, NumberInput, SimpleGrid, Stack, Switch, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { errorMessage } from '../api/client';
-import { useDeliveries, useEndpoint, useRotateSecret, useSendTestEvent, useSetEndpointEnabled, useUpdateEndpoint } from '../api/hooks';
+import {
+  useDeleteEndpoint,
+  useDeliveries,
+  useEndpoint,
+  useRotateSecret,
+  useSendTestEvent,
+  useSetEndpointEnabled,
+  useUpdateEndpoint,
+} from '../api/hooks';
+import { useSingleFlight } from '../api/useSingleFlight';
 import type { Endpoint, SecretRotated } from '../api/types';
 import { DeliveriesTable } from '../components/DeliveriesTable';
 import { EndpointHealthCard } from '../components/EndpointHealthCard';
@@ -19,12 +28,13 @@ function EditEndpointForm({ endpoint, onDone }: { endpoint: Endpoint; onDone: ()
   const [description, setDescription] = useState(endpoint.description ?? '');
   const [eventTypes, setEventTypes] = useState(endpoint.eventTypes.join(', '));
   const update = useUpdateEndpoint();
+  const updateOnce = useSingleFlight(update);
   return (
     <form
       onSubmit={(ev) => {
         ev.preventDefault();
         const types = eventTypes.split(',').map((t) => t.trim()).filter(Boolean);
-        update.mutate(
+        updateOnce(
           { id: endpoint.id, name: name.trim(), url: url.trim(), description: description.trim(), eventTypes: types },
           {
             onSuccess: () => {
@@ -70,6 +80,7 @@ function RotateSecretModal({ endpoint, opened, onClose }: { endpoint: Endpoint; 
   const [graceHours, setGraceHours] = useState<number | ''>(24);
   const [result, setResult] = useState<SecretRotated | null>(null);
   const rotate = useRotateSecret();
+  const rotateOnce = useSingleFlight(rotate);
   // The form resets once the closing animation has finished, so the shown-once value never flashes back to the form.
   const reset = () => {
     setResult(null);
@@ -115,12 +126,52 @@ function RotateSecretModal({ endpoint, opened, onClose }: { endpoint: Endpoint; 
             color="orange"
             loading={rotate.isPending}
             disabled={graceHours === '' || graceHours < 0 || graceHours > 72}
-            onClick={() => graceHours !== '' && rotate.mutate({ id: endpoint.id, gracePeriodHours: graceHours }, { onSuccess: setResult })}
+            onClick={() => graceHours !== '' && rotateOnce({ id: endpoint.id, gracePeriodHours: graceHours }, { onSuccess: setResult })}
           >
             Rotate secret
           </Button>
         </Stack>
       )}
+    </Modal>
+  );
+}
+
+/** Deleting is final: queued work is cancelled, the history stays readable but can no longer be replayed. */
+function DeleteEndpointModal({ endpoint, opened, onClose }: { endpoint: Endpoint; opened: boolean; onClose: () => void }) {
+  const remove = useDeleteEndpoint();
+  const removeOnce = useSingleFlight(remove);
+  const navigate = useNavigate();
+  return (
+    <Modal opened={opened} onClose={onClose} onExitTransitionEnd={() => remove.reset()} title={`Delete ${endpoint.name}?`}>
+      <Stack>
+        <Text size="sm">
+          Pending and retrying deliveries to this endpoint are cancelled, and new events are no longer sent to it. Its deliveries and dead
+          letters stay in the history, but they can&apos;t be replayed. This can&apos;t be undone.
+        </Text>
+        <Text size="sm" c="dimmed">
+          To stop deliveries for a while instead, turn the endpoint off with the Enabled switch.
+        </Text>
+        {remove.isError && <Alert color="red">{errorMessage(remove.error)}</Alert>}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            color="red"
+            loading={remove.isPending}
+            onClick={() =>
+              removeOnce(endpoint.id, {
+                onSuccess: () => {
+                  notifications.show({ color: 'green', message: `Deleted ${endpoint.name}` });
+                  navigate('/endpoints');
+                },
+              })
+            }
+          >
+            Delete endpoint
+          </Button>
+        </Group>
+      </Stack>
     </Modal>
   );
 }
@@ -133,6 +184,7 @@ export function EndpointDetailPage() {
   const sendTest = useSendTestEvent();
   const [rotating, setRotating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const e = endpoint.data;
   const rows = deliveries.data?.pages.flatMap((p) => p.items) ?? [];
 
@@ -176,8 +228,12 @@ export function EndpointDetailPage() {
                 >
                   Send test event
                 </Button>
+                <Button variant="subtle" color="red" onClick={() => setDeleting(true)}>
+                  Delete
+                </Button>
               </Group>
             </Group>
+            <DeleteEndpointModal endpoint={e} opened={deleting} onClose={() => setDeleting(false)} />
             <RotateSecretModal endpoint={e} opened={rotating} onClose={() => setRotating(false)} />
             <Modal opened={editing} onClose={() => setEditing(false)} title="Edit endpoint">
               <EditEndpointForm endpoint={e} onDone={() => setEditing(false)} />

@@ -137,7 +137,7 @@ Invoke-RestMethod -Method Put -Uri "$sim/config" -ContentType "application/json"
 
 ### 5.4 Send an event and see it delivered
 
-**From the dashboard:** open the `Orders` endpoint and click **Send test event**.
+**From the dashboard:** open the `Orders` endpoint and click **Send test event**. Or open **Events**, click **Publish event**, enter an event type such as `order.created` and a JSON payload, and click **Publish event**. The dialog lists the deliveries it queued, one per matching endpoint, or says that no endpoint subscribes to that type. *Accepted* only means stored and queued; open a delivery to see whether it was delivered.
 
 **Or as a producer would, through the API:**
 
@@ -199,6 +199,8 @@ A `400` from the receiver is different: it is treated as permanent and dead-lett
 ### 5.9 Edit an endpoint
 
 On the endpoint page, click **Edit** to change its name, URL, description or event types. Deliveries that are queued or retrying go to the new URL; dead letters are not retried, so replay them after saving (step 5.7). This is how you fix an endpoint registered with the wrong URL.
+
+To remove an endpoint, click **Delete** on its page and confirm. Its pending and retrying deliveries are cancelled; its history stays visible but can no longer be replayed. To pause deliveries instead, use the **Enabled** switch.
 
 ### 5.10 API keys
 
