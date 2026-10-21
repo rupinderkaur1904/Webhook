@@ -2,6 +2,8 @@
 
 The public demo runs on **Fly.io** (the platform and the receiver simulator as two separate apps) with **Neon** as the managed PostgreSQL. The comparison behind that choice is in the project's hosting notes; this page covers how to deploy and operate it.
 
+> For a free (₹0) deployment on one Azure VM with Azure Database for PostgreSQL, see [DEPLOYMENT-AZURE.md](DEPLOYMENT-AZURE.md); this page covers the paid Fly.io option, which has not been deployed.
+>
 > To try the platform without deploying anything, use Docker Compose: [LOCAL-TESTING.md](LOCAL-TESTING.md).
 
 ## Topology and cost
