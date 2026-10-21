@@ -1,5 +1,8 @@
 # Local development profile (SPRING_PROFILES_ACTIVE=local). Never use these values in production.
 webhooks:
+  auth:
+    # The local dev server is plain HTTP.
+    session-cookie-secure: false
   bootstrap:
     email: dev@localhost
     password: local-dev-password
@@ -26,3 +29,10 @@ webhooks:
     base-delay: 2s
     max-delay: 20s
     max-retry-after: 60s
+  # Short cool-downs so the breaker demo opens, probes and closes within seconds.
+  circuit:
+    base-cooldown: 5s
+    max-cooldown: 1m
+  # Prometheus scrape token for local use only (GET /actuator/prometheus).
+  metrics:
+    token: local-dev-metrics-token-00000000

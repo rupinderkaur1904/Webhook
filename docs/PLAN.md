@@ -277,6 +277,7 @@ Rules enforced in code **and** in SQL `WHERE` clauses (every transition is a con
 | IN_FLIGHT | DEAD_LETTERED | permanent failure, blocked destination, or budget exhausted |
 | IN_FLIGHT | RETRYING / DEAD_LETTERED | lease expired (reaper) |
 | PENDING, RETRYING | CANCELLED | endpoint deleted |
+| IN_FLIGHT | CANCELLED | endpoint deleted while the attempt was in flight: a retryable result, or a reaped lease |
 | DELIVERED, DEAD_LETTERED, CANCELLED | — | terminal; never updated again |
 
 Disabling an endpoint or an open circuit does **not** change delivery status. Deliveries stay `PENDING`/`RETRYING` and simply are not claimed. Nothing is discarded.
@@ -931,4 +932,36 @@ Decisions made during implementation. Each one either refines the plan or depart
 - **Local profile:** the lease is 15s and the reaper interval 2s, so `scripts/demo.sh crash` recovers within about 20s.
 - **Delivery detail** shows the current lease (`lease.owner`, `lease.expiresAt`) while a delivery is in flight.
 - **The crash test kills a real JVM.** It starts the platform as a child process with the test classpath, holds a request open at the receiver, sends SIGKILL, then recovers. This is closer to §13's `docker compose kill app` than simulating the database state.
+
+- **Audit fixes (worker):**
+  - The result transaction updates the delivery row before the attempt row, the same lock order as the lease reaper. In the opposite order a late result meeting the reaper deadlocked, and PostgreSQL aborted one side.
+  - A delivery re-queued while its endpoint's deletion commits (a retry recorded, a lease reaped, an event ingested) is not seen by the deletion's own cancel. Every reaper pass therefore also cancels `PENDING`/`RETRYING` deliveries of deleted endpoints.
+  - A response body is no longer drained. When more than the stored 2 KB follows, the connection is dropped, as the Stage 1 note above says. Before, a `2xx` with a large or stalling body ran into the response deadline and was recorded as a timeout and re-sent.
+  - `Retry-After` accepts all three HTTP-date forms (RFC 9110 §5.6.7) and only ASCII digits.
+
+**Stage 5**
+**Stage 5**
+- **API keys are limited to ingestion and reads.** §5.2 marks management routes "session"; this is enforced, so a key gets `403 SESSION_REQUIRED` on endpoint changes, replay, rotation, key management and `/auth/*`. Tests and the demo script now use a session for those calls.
+- **CSRF** is a double-submit cookie (`XSRF-TOKEN`, readable by the SPA, echoed in `X-XSRF-TOKEN`) rather than a token stored in the session. Login itself needs the token (no login CSRF), and that would otherwise require a session for every anonymous visitor. Requests with `Authorization: Bearer` skip CSRF; the API-key filter then replaces any session authentication on that request, so a Bearer header cannot be used to act with session rights.
+- **Sessions:** Spring Session JDBC with Flyway-managed tables (migration V4), cookie `WEBHOOKS_SESSION`, 8h idle timeout. Login invalidates any existing session and starts a new one, rather than only changing the id, so nothing from a previous user's session carries over. The session cookie is configured in code: Spring Boot applies `server.servlet.session.cookie.*` to Spring Session only with an embedded server, which the MockMvc tests do not start, and a test caught the missing flags.
+- **Passwords:** Argon2id (Spring Security's v5.8 defaults, BouncyCastle) via a delegating encoder; bcrypt hashes from earlier stages are upgraded at the next login. The login limit is per client address **and** per email, so a distributed guess at one account is also throttled.
+- **Limits:** 20 active API keys per account (a number not in the plan, chosen to stop runaway key creation); 50 endpoints per account, enforced under a per-account advisory lock so concurrent creates cannot both pass. Body limit 256 KB as planned; JSON nesting depth 64 and string length 256 KB via Jackson stream constraints.
+- **Secret rotation** stores the old ciphertext with an expiry. The worker already signed with both (Stage 1); the endpoint response now exposes `previousSecretExpiresAt` while the grace period lasts.
+- **Request ids:** every response has `X-Request-Id` (a safe incoming value is kept), it is in every problem body and on every log line.
+- **Log masking** is a `%replace` in the console pattern. Stage 6 moves to structured logging and must keep an equivalent mask.
+- **SSRF matrix:** the cases in §11 were already covered by Stage 1 tests (`DestinationPolicyTest`, `AddressPolicyTest`, send-time loopback resolution, redirects). Stage 5 adds no new SSRF code.
+- **Frontend:** the API-key "connect" screen is replaced by email and password sign-in. A 401 anywhere returns to the sign-in page; a stale CSRF token is refreshed and the request retried once. New: API keys page, secret rotation on endpoint detail. The dev and preview proxies forward `/api/` (with the slash) so the dashboard's own `/api-keys` route is not proxied.
+
+**Stage 6**
+- **Circuit breaker** as in §7.5, with these refinements:
+  - A non-retryable answer (for example `400`) ends a failure streak while closed, not only a 2xx: it proves the endpoint is reachable, and the plan already treats it that way for the probe.
+  - `429` and blocked destinations are neutral everywhere. A probe answered with `429` stays the probe and is retried at its `Retry-After`.
+  - The maintenance loop (the reaper's job) also re-picks a probe when a half-open circuit's probe has ended without deciding (cancelled, dead-lettered after repeated `429`s), so no state needs manual action. Circuits with nothing due stay waiting.
+  - A worker result discarded because its lease expired does not count: the attempt was abandoned by the platform, not failed by the endpoint.
+  - The circuit's state is updated under a row lock in the same transaction as the attempt result (`circuit_open_count` and `half_open_probe_id` were already in the V1 schema). Migration V5 only adds indexes for probe selection, per-endpoint dead letters and the maintenance loop.
+  - A successful probe resets `circuit_open_count`, so the next outage starts again at the base cool-down.
+- **Health** follows the table in §7.5. The window is selectable (`1h`, `24h` default, `7d`) on `GET /endpoints/{id}/health` and on the overview, which now includes `endpointHealth` (worst first). Last success and last failure are reported over all time, not only the window, because "when did this last work?" is the question they answer. `FAILING after 5` is configurable as `webhooks.circuit.failing-after`.
+- **Metrics:** Micrometer with the Prometheus registry. The scrape endpoint needs a static bearer token (`METRICS_TOKEN`, at least 24 characters); without one it is closed. Queue gauges are read from PostgreSQL so every instance agrees, from one query cached for 5s, and report `NaN` if the database is unreachable.
+- **Structured logging:** Spring Boot's built-in structured logging, switched on with `LOG_FORMAT=ecs` (or `logstash`). A JSON members customizer applies the same `whsec_`/`whk_` mask as the plain-text pattern. Delivery processing puts `deliveryId`, `eventId`, `endpointId`, `accountId` and `attempt` in the MDC.
+- **Demo:** `scripts/demo.sh breaker`. The local profile uses a 5s base cool-down. Every demo run now deletes endpoints left by older runs beyond the newest 20, because the 50-endpoint cap from Stage 5 was reached after many runs.
 

@@ -14,10 +14,23 @@ webhooks:
     max-retry-after: 300s
   replay:
     max-per-delivery: 2
+  rate-limit:
+    # High enough that ordinary tests never trip it; RateLimitTest builds its own limiter.
+    login-per-minute: 1000
+    ingest-per-second: 1000
+    ingest-burst: 1000
   ssrf:
     # Host-only entry: the in-process test receiver listens on a random port.
     allowed-hosts:
       - 127.0.0.1
+spring:
+  datasource:
+    hikari:
+      # Spring caches one application context per distinct test configuration, each with its own
+      # pool. Small, mostly idle pools keep the cached contexts under PostgreSQL's 100 connections.
+      maximum-pool-size: 10
+      minimum-idle: 1
+      idle-timeout: 10000
 logging:
   level:
     dev.webhooks: INFO

@@ -52,7 +52,7 @@ class DashboardQueriesTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        String endpoint = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+        String endpoint = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"metrics\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                 .andReturn().getResponse().getContentAsString()).get("endpoint").get("id").asString();

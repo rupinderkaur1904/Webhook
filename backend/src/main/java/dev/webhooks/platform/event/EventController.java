@@ -9,6 +9,9 @@ import dev.webhooks.platform.event.EventDtos.CreateEventRequest;
 import dev.webhooks.platform.event.EventDtos.EventAcceptedResponse;
 import dev.webhooks.platform.event.EventDtos.EventDetail;
 import dev.webhooks.platform.event.EventDtos.EventSummary;
+import dev.webhooks.platform.ratelimit.RateLimiter;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
@@ -34,29 +37,44 @@ public class EventController {
     private final EventRepository events;
     private final DeliveryQueryRepository deliveries;
     private final ObjectMapper objectMapper;
+    private final RateLimiter rateLimiter;
+    private final Counter accepted;
+    private final Counter replayed;
+    private final Counter deliveriesCreated;
 
     public EventController(IngestionService ingestion, EventRepository events, DeliveryQueryRepository deliveries,
-            ObjectMapper objectMapper) {
+            ObjectMapper objectMapper, RateLimiter rateLimiter, MeterRegistry meters) {
         this.ingestion = ingestion;
         this.events = events;
         this.deliveries = deliveries;
         this.objectMapper = objectMapper;
+        this.rateLimiter = rateLimiter;
+        this.accepted = meters.counter("webhooks.events.received", "result", "accepted");
+        this.replayed = meters.counter("webhooks.events.received", "result", "idempotent_replay");
+        this.deliveriesCreated = meters.counter("webhooks.deliveries.created");
     }
 
     /**
      * Accepts an event for asynchronous delivery. Returns {@code 202} once the event and its
      * deliveries are committed. Repeating a request with the same {@code Idempotency-Key} returns
      * {@code 200} with the original response and {@code Idempotent-Replayed: true}; reusing the key
-     * for a different request returns {@code 409}.
+     * for a different request returns {@code 409}. Limited per credential; over the limit returns
+     * {@code 429} with {@code Retry-After}.
      */
     @PostMapping
     ResponseEntity<EventAcceptedResponse> submit(@AuthenticationPrincipal AccountPrincipal principal,
+            // Optional for Spring so a missing key gets IDEMPOTENCY_KEY_REQUIRED, but required by the contract.
+            @io.swagger.v3.oas.annotations.Parameter(required = true)
             @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody CreateEventRequest request) {
+        rateLimiter.checkIngest(principal.credentialId());
         var result = ingestion.ingest(principal.accountId(), idempotencyKey, request);
         if (result.replayed()) {
+            replayed.increment();
             return ResponseEntity.ok().header("Idempotent-Replayed", "true").body(result.response());
         }
+        accepted.increment();
+        deliveriesCreated.increment(result.response().deliveries().size());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result.response());
     }
 
@@ -68,7 +86,7 @@ public class EventController {
             @RequestParam(required = false) Integer limit,
             @RequestParam(required = false) String cursor) {
         int size = Page.checkLimit(limit);
-        List<EventSummary> rows = events.list(principal.accountId(), eventType, from, to,
+        List<EventSummary> rows = events.list(principal.accountId(), eventType, Page.checkTime("from", from), Page.checkTime("to", to),
                 cursor == null ? null : Cursor.decode(cursor), size + 1);
         String next = null;
         if (rows.size() > size) {

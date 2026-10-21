@@ -44,7 +44,7 @@ class EventIngestionTest {
     }
 
     String endpoint(Account owner, String name, String eventTypes) throws Exception {
-        String body = mvc.perform(post("/api/v1/endpoints").header("Authorization", owner.bearer())
+        String body = mvc.perform(post("/api/v1/endpoints").with(owner.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"" + name + "\",\"url\":\"http://127.0.0.1:9/" + name + "\",\"eventTypes\":"
                                 + eventTypes + "}"))

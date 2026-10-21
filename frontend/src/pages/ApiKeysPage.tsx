@@ -1,0 +1,153 @@
+import { Alert, Badge, Button, Code, CopyButton, Group, Modal, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
+import { useState } from 'react';
+import { errorMessage } from '../api/client';
+import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '../api/hooks';
+import type { ApiKey } from '../api/types';
+import { EmptyState, QueryState } from '../components/QueryState';
+import { Time } from '../components/Time';
+
+function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [key, setKey] = useState<string | null>(null);
+  const create = useCreateApiKey();
+  // The form resets once the closing animation has finished, so the shown-once value never flashes back to the form.
+  const reset = () => {
+    setName('');
+    setKey(null);
+    create.reset();
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} onExitTransitionEnd={reset} title={key ? 'API key created' : 'Create API key'}>
+      {key ? (
+        <Stack>
+          <Alert color="yellow" title="Copy the key now">
+            This is the only time the full key is shown. Store it in your producer's secret store.
+          </Alert>
+          <Code block>{key}</Code>
+          <Group>
+            <CopyButton value={key}>{({ copied, copy }) => <Button onClick={copy}>{copied ? 'Copied' : 'Copy key'}</Button>}</CopyButton>
+            <Button variant="default" onClick={onClose}>
+              Done
+            </Button>
+          </Group>
+        </Stack>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create.mutate(name.trim(), { onSuccess: (r) => setKey(r.key) });
+          }}
+        >
+          <Stack>
+            <Text size="sm" c="dimmed">
+              API keys let a producer submit events (POST /api/v1/events) and read data. They cannot change endpoints or keys.
+            </Text>
+            <TextInput label="Name" placeholder="orders-service (production)" value={name} onChange={(e) => setName(e.currentTarget.value)} required maxLength={100} />
+            {create.isError && <Alert color="red">{errorMessage(create.error)}</Alert>}
+            <Button type="submit" loading={create.isPending} disabled={!name.trim()}>
+              Create key
+            </Button>
+          </Stack>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+function RevokeButton({ apiKey }: { apiKey: ApiKey }) {
+  const [confirming, setConfirming] = useState(false);
+  const revoke = useRevokeApiKey();
+  return (
+    <>
+      <Button size="xs" color="red" variant="light" onClick={() => setConfirming(true)}>
+        Revoke
+      </Button>
+      <Modal opened={confirming} onClose={() => setConfirming(false)} title={`Revoke "${apiKey.name}"?`}>
+        <Stack>
+          <Text size="sm">Requests using this key will be rejected immediately. This cannot be undone.</Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              loading={revoke.isPending}
+              onClick={() =>
+                revoke.mutate(apiKey.id, {
+                  onSuccess: () => {
+                    setConfirming(false);
+                    notifications.show({ color: 'green', message: `Revoked ${apiKey.name}` });
+                  },
+                  onError: (err) => notifications.show({ color: 'red', message: errorMessage(err) }),
+                })
+              }
+            >
+              Revoke key
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
+  );
+}
+
+export function ApiKeysPage() {
+  const keys = useApiKeys();
+  const [creating, setCreating] = useState(false);
+
+  return (
+    <Stack>
+      <Group justify="space-between">
+        <Title order={2}>API keys</Title>
+        <Button onClick={() => setCreating(true)}>Create API key</Button>
+      </Group>
+      <CreateApiKeyModal opened={creating} onClose={() => setCreating(false)} />
+      <QueryState isLoading={keys.isLoading} error={keys.error} onRetry={() => keys.refetch()}>
+        {keys.data?.length === 0 ? (
+          <EmptyState title="No API keys">Create one for each system that submits events.</EmptyState>
+        ) : (
+          <Table striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Key</Table.Th>
+                <Table.Th>Created</Table.Th>
+                <Table.Th>Last used</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {keys.data?.map((k) => (
+                <Table.Tr key={k.id}>
+                  <Table.Td>{k.name}</Table.Td>
+                  <Table.Td>
+                    <Code>{k.prefix}…</Code>
+                  </Table.Td>
+                  <Table.Td>
+                    <Time value={k.createdAt} />
+                  </Table.Td>
+                  <Table.Td>{k.lastUsedAt ? <Time value={k.lastUsedAt} /> : <Text c="dimmed" size="sm">never</Text>}</Table.Td>
+                  <Table.Td>
+                    {k.revokedAt ? (
+                      <Badge color="gray" variant="light">
+                        revoked
+                      </Badge>
+                    ) : (
+                      <Badge color="green" variant="light">
+                        active
+                      </Badge>
+                    )}
+                  </Table.Td>
+                  <Table.Td>{!k.revokedAt && <RevokeButton apiKey={k} />}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </QueryState>
+    </Stack>
+  );
+}

@@ -56,7 +56,7 @@ class DeliveryProcessingTest {
         data.clearDeliveries();
         receiver = new TestReceiver();
         account = data.newAccount();
-        JsonNode created = json.readTree(mvc.perform(post("/api/v1/endpoints").header("Authorization", account.bearer())
+        JsonNode created = json.readTree(mvc.perform(post("/api/v1/endpoints").with(account.session())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"rx\",\"url\":\"" + receiver.url("/hook") + "\"}"))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());

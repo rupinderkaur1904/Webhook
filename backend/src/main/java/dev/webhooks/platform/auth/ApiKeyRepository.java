@@ -1,5 +1,10 @@
 package dev.webhooks.platform.auth;
 
+import dev.webhooks.platform.common.ApiNullable;
+import static dev.webhooks.platform.common.Jdbc.instant;
+
+import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -46,5 +51,50 @@ public class ApiKeyRepository {
                 .param("prefix", keyPrefix)
                 .param("hash", keyHash)
                 .update();
+    }
+
+    public record ApiKey(UUID id, String name, String prefix, Instant createdAt, @ApiNullable Instant lastUsedAt, @ApiNullable Instant revokedAt) {}
+
+    public List<ApiKey> list(UUID accountId) {
+        return jdbc.sql("""
+                        SELECT id, name, key_prefix, created_at, last_used_at, revoked_at FROM api_keys
+                        WHERE account_id = :account ORDER BY revoked_at IS NOT NULL, created_at DESC
+                        """)
+                .param("account", accountId)
+                .query((rs, n) -> new ApiKey(rs.getObject("id", UUID.class), rs.getString("name"),
+                        rs.getString("key_prefix"), instant(rs, "created_at"), instant(rs, "last_used_at"),
+                        instant(rs, "revoked_at")))
+                .list();
+    }
+
+    public int countActive(UUID accountId) {
+        return jdbc.sql("SELECT count(*) FROM api_keys WHERE account_id = :account AND revoked_at IS NULL")
+                .param("account", accountId)
+                .query(Integer.class)
+                .single();
+    }
+
+    public UUID insert(UUID accountId, String name, String keyPrefix, byte[] keyHash) {
+        return jdbc.sql("""
+                        INSERT INTO api_keys (account_id, name, key_prefix, key_hash)
+                        VALUES (:account, :name, :prefix, :hash) RETURNING id
+                        """)
+                .param("account", accountId)
+                .param("name", name)
+                .param("prefix", keyPrefix)
+                .param("hash", keyHash)
+                .query(UUID.class)
+                .single();
+    }
+
+    /** Revokes an active key; returns false if it does not exist for this account or is already revoked. */
+    public boolean revoke(UUID accountId, UUID id) {
+        return jdbc.sql("""
+                        UPDATE api_keys SET revoked_at = now()
+                        WHERE id = :id AND account_id = :account AND revoked_at IS NULL
+                        """)
+                .param("id", id)
+                .param("account", accountId)
+                .update() == 1;
     }
 }

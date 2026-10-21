@@ -1,5 +1,6 @@
 package dev.webhooks.platform.worker;
 
+import dev.webhooks.platform.circuit.CircuitService;
 import dev.webhooks.platform.crypto.SecretCipher;
 import dev.webhooks.platform.delivery.ClaimedDelivery;
 import dev.webhooks.platform.delivery.DeliveryRepository;
@@ -11,6 +12,7 @@ import dev.webhooks.platform.retry.RetryPolicy;
 import dev.webhooks.platform.retry.RetryPolicy.Decision;
 import dev.webhooks.platform.signing.WebhookSigner;
 import dev.webhooks.platform.ssrf.DestinationPolicy;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -21,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -47,10 +50,12 @@ public class DeliveryProcessor {
     private final TransactionTemplate tx;
     private final ObjectMapper objectMapper;
     private final RetryPolicy retryPolicy;
+    private final CircuitService circuits;
+    private final MeterRegistry meters;
 
     public DeliveryProcessor(JdbcClient jdbc, EndpointRepository endpoints, DeliveryRepository deliveries,
             SecretCipher cipher, DestinationPolicy destinationPolicy, WebhookHttpClient http, TransactionTemplate tx,
-            ObjectMapper objectMapper, RetryPolicy retryPolicy) {
+            ObjectMapper objectMapper, RetryPolicy retryPolicy, CircuitService circuits, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.endpoints = endpoints;
         this.deliveries = deliveries;
@@ -60,11 +65,26 @@ public class DeliveryProcessor {
         this.tx = tx;
         this.objectMapper = objectMapper;
         this.retryPolicy = retryPolicy;
+        this.circuits = circuits;
+        this.meters = meters;
     }
 
+    /**
+     * Sends and records one attempt. While it runs, log lines carry {@code deliveryId}, {@code eventId},
+     * {@code endpointId}, {@code accountId} and {@code attempt} (MDC), so one delivery can be followed
+     * through the logs.
+     */
     public void process(ClaimedDelivery claim) {
-        HttpAttemptResult result = send(claim);
-        record(claim, result);
+        try (var d = MDC.putCloseable("deliveryId", claim.deliveryId().toString());
+                var e = MDC.putCloseable("eventId", claim.eventId().toString());
+                var p = MDC.putCloseable("endpointId", claim.endpointId().toString());
+                var a = MDC.putCloseable("accountId", claim.accountId().toString());
+                var n = MDC.putCloseable("attempt", Integer.toString(claim.attemptNumber()))) {
+            HttpAttemptResult result = send(claim);
+            meters.timer("webhooks.attempts", "outcome", result.outcome().name())
+                    .record(Duration.ofMillis(Math.max(0, result.durationMs())));
+            record(claim, result);
+        }
     }
 
     private HttpAttemptResult send(ClaimedDelivery claim) {
@@ -118,20 +138,37 @@ public class DeliveryProcessor {
                 (int) Math.min(result.durationMs(), Integer.MAX_VALUE));
 
         boolean applied = Boolean.TRUE.equals(tx.execute(status -> {
-            deliveries.finishAttempt(claim.attemptId(), success ? "SUCCEEDED" : "FAILED", attempt);
-            return switch (decision) {
+            // Delivery row first, attempt row second: the same lock order as the lease reaper, which
+            // locks the delivery and then abandons its attempt. The opposite order deadlocks when a
+            // late result and the reaper meet. If the reaper got there first, the guarded update waits
+            // for it, matches nothing, and finishAttempt then flags the attempt as reported late.
+            boolean updated = switch (decision) {
                 case Decision.Deliver d -> deliveries.markDelivered(claim, result.statusCode());
                 case Decision.Retry r -> deliveries.markRetrying(claim, r.delay(), result.statusCode(), error);
                 case Decision.DeadLetter dl -> deliveries.markDeadLettered(claim, dl.reason(), result.statusCode(), error);
             };
+            deliveries.finishAttempt(claim.attemptId(), success ? "SUCCEEDED" : "FAILED", attempt);
+            if (updated) {
+                // Same transaction: the circuit's counters always match the recorded attempts.
+                circuits.recordResult(claim.endpointId(), claim.deliveryId(), result.outcome(), result.statusCode());
+            }
+            return updated;
         }));
         if (!applied) {
+            meters.counter("webhooks.attempts.stale.results").increment();
             log.warn("Discarded result for delivery {} attempt {}: lease no longer held (stale worker)",
                     claim.deliveryId(), claim.attemptNumber());
-        } else {
-            log.info("Delivery {} attempt {}/{} -> {} ({} ms): {}", claim.deliveryId(), claim.attemptNumber(),
-                    claim.maxAttempts(), result.outcome(), result.durationMs(), describe(decision));
+            return;
         }
+        switch (decision) {
+            case Decision.Deliver d -> meters.counter("webhooks.deliveries.finished", "status", "DELIVERED",
+                    "reason", "none").increment();
+            case Decision.DeadLetter dl -> meters.counter("webhooks.deliveries.finished", "status", "DEAD_LETTERED",
+                    "reason", dl.reason().name()).increment();
+            case Decision.Retry r -> meters.counter("webhooks.deliveries.retries.scheduled").increment();
+        }
+        log.info("Delivery {} attempt {}/{} -> {} ({} ms): {}", claim.deliveryId(), claim.attemptNumber(),
+                claim.maxAttempts(), result.outcome(), result.durationMs(), describe(decision));
     }
 
     private static String describe(Decision decision) {

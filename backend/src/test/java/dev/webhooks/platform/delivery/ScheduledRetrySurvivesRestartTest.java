@@ -5,6 +5,8 @@ import static org.awaitility.Awaitility.await;
 
 import dev.webhooks.platform.WebhookPlatformApplication;
 import dev.webhooks.platform.crypto.Tokens;
+import dev.webhooks.platform.endpoint.EndpointDtos.CreateEndpointRequest;
+import dev.webhooks.platform.endpoint.EndpointService;
 import dev.webhooks.platform.support.PostgresInitializer;
 import dev.webhooks.platform.support.TestReceiver;
 import java.net.URI;
@@ -72,9 +74,10 @@ class ScheduledRetrySurvivesRestartTest {
                         .param("a", account).param("h", Tokens.sha256(apiKey)).update();
                 int port = first.getEnvironment().getProperty("local.server.port", Integer.class);
 
-                String endpointId = call(port, "POST", "/api/v1/endpoints", apiKey,
-                        "{\"name\":\"restart\",\"url\":\"" + receiver.url("/hook") + "\"}", null)
-                        .get("endpoint").get("id").asString();
+                // Endpoint management needs a dashboard session; the service is called directly instead.
+                String endpointId = first.getBean(EndpointService.class)
+                        .create(account, new CreateEndpointRequest("restart", null, receiver.url("/hook"), null))
+                        .endpoint().id().toString();
                 // Shut the first instance down as soon as the failure is recorded and the retry scheduled.
                 deliveryId = call(port, "POST", "/api/v1/events", apiKey,
                         "{\"eventType\":\"a.b\",\"payload\":{},\"endpointIds\":[\"" + endpointId + "\"]}", "restart-1")

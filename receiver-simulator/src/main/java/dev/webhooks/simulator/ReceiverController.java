@@ -13,7 +13,9 @@ import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,6 +36,27 @@ public class ReceiverController {
 
     public ReceiverController(ReceiverRegistry registry) {
         this.registry = registry;
+    }
+
+    /** Liveness for the container health check and the hosting platform. */
+    @GetMapping("/healthz")
+    Map<String, String> health() {
+        return Map.of("status", "UP");
+    }
+
+    /** Paths an endpoint URL commonly stops at by mistake (e.g. {@code http://simulator:9090}). */
+    static final List<String> WRONG_PATHS = List.of("/", "/receivers", "/receivers/");
+
+    /**
+     * A delivery to the simulator's root instead of a named receiver. The platform records this body on
+     * the attempt, so the dashboard shows how to fix the endpoint URL.
+     */
+    @PostMapping({"/", "/receivers", "/receivers/"})
+    ResponseEntity<Map<String, Object>> wrongPath(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "error", "No receiver at " + request.getRequestURI(),
+                "hint", "Webhooks go to /receivers/{name}, for example http://simulator:9090/receivers/demo. "
+                        + "Any name works and is created on first use."));
     }
 
     @PostMapping("/receivers/{name}")
@@ -97,6 +120,9 @@ public class ReceiverController {
         if (request.secret() == null || request.body() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "secret and body are required");
         }
+        if (!SignatureVerifier.isValidSecret(request.secret())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "secret must be whsec_ followed by base64");
+        }
         var result = SignatureVerifier.verify(request.secret(), request.webhookId(), request.webhookTimestamp(),
                 request.webhookSignature(), request.body().getBytes(StandardCharsets.UTF_8), Instant.now(),
                 SignatureVerifier.DEFAULT_TOLERANCE);
@@ -110,5 +136,16 @@ public class ReceiverController {
     ResponseEntity<Void> reset(@PathVariable String name) {
         registry.reset(name);
         return ResponseEntity.noContent().build();
+    }
+
+    /** A chunked body that passed the 1 MB limit while being read; other unreadable bodies are 400. */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ResponseEntity<Void> unreadable(HttpMessageNotReadableException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof PublicExposureFilter.BodyTooLargeException) {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).build();
+            }
+        }
+        return ResponseEntity.badRequest().build();
     }
 }

@@ -1,15 +1,18 @@
 package dev.webhooks.platform.common;
 
+import dev.webhooks.platform.ratelimit.RateLimitedException;
 import java.net.URI;
 import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.ErrorResponse;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -34,7 +37,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             body.setProperty("errors", ex.errors());
         }
         ex.properties().forEach(body::setProperty);
-        return ResponseEntity.status(ex.status()).body(body);
+        var response = ResponseEntity.status(ex.status());
+        if (ex instanceof RateLimitedException limited) {
+            response.header(HttpHeaders.RETRY_AFTER, Long.toString(limited.retryAfterSeconds()));
+        }
+        return response.body(body);
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -42,6 +49,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         ProblemDetail body = problem(HttpStatus.BAD_REQUEST, "INVALID_PARAMETER",
                 "Parameter '" + ex.getName() + "' has an invalid value");
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /** PostgreSQL unreachable inside a controller: the same answer as {@link DatabaseUnavailableFilter}. */
+    @ExceptionHandler({org.springframework.dao.DataAccessResourceFailureException.class,
+            org.springframework.dao.TransientDataAccessResourceException.class})
+    ResponseEntity<ProblemDetail> handleDatabaseUnavailable(Exception ex) {
+        log.warn("Database unavailable: {}", ex.toString());
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .header(HttpHeaders.RETRY_AFTER, DatabaseUnavailableFilter.RETRY_AFTER_SECONDS)
+                .body(problem(HttpStatus.SERVICE_UNAVAILABLE, "DATABASE_UNAVAILABLE",
+                        "The database is temporarily unavailable; retry shortly"));
     }
 
     @ExceptionHandler(Exception.class)
@@ -65,6 +83,15 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleHttpMessageNotReadable(HttpMessageNotReadableException ex,
             HttpHeaders headers, HttpStatusCode status, WebRequest request) {
+        for (Throwable cause = ex; cause != null; cause = cause.getCause()) {
+            if (cause instanceof RequestSizeLimitFilter.PayloadTooLargeException tooLarge) {
+                return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(tooLarge.problem());
+            }
+            if (cause instanceof tools.jackson.core.exc.StreamConstraintsException) {
+                return ResponseEntity.badRequest().body(problem(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST",
+                        "Request body exceeds JSON nesting or size limits"));
+            }
+        }
         return ResponseEntity.badRequest()
                 .body(problem(HttpStatus.BAD_REQUEST, "MALFORMED_REQUEST", "Request body is not valid JSON for this operation"));
     }
@@ -72,6 +99,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception ex, Object body, HttpHeaders headers,
             HttpStatusCode statusCode, WebRequest request) {
+        // Spring's own handlers (404 no route, 405, 415, ...) pass a null body and let the superclass
+        // take the exception's ProblemDetail; take it here so it gets the code and requestId too.
+        if (body == null && ex instanceof ErrorResponse errorResponse) {
+            body = errorResponse.getBody();
+        }
         if (ex instanceof MissingRequestHeaderException missing) {
             body = problem(HttpStatus.BAD_REQUEST, "MISSING_HEADER", "Required header '" + missing.getHeaderName() + "' is missing");
             statusCode = HttpStatus.BAD_REQUEST;
@@ -79,6 +111,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 || !detail.getProperties().containsKey("code"))) {
             HttpStatus resolved = HttpStatus.resolve(statusCode.value());
             detail.setProperty("code", resolved != null ? resolved.name() : "ERROR");
+            String requestId = MDC.get(RequestIdFilter.MDC_KEY);
+            if (requestId != null) {
+                detail.setProperty("requestId", requestId);
+            }
         }
         return super.handleExceptionInternal(ex, body, headers, statusCode, request);
     }
@@ -88,6 +124,10 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         body.setType(URI.create("urn:webhooks:error:" + code.toLowerCase()));
         body.setTitle(status.getReasonPhrase());
         body.setProperty("code", code);
+        String requestId = MDC.get(RequestIdFilter.MDC_KEY);
+        if (requestId != null) {
+            body.setProperty("requestId", requestId);
+        }
         return body;
     }
 }

@@ -30,6 +30,42 @@ const overview: Overview = {
       startedAt: '2026-10-15T04:59:00Z',
     },
   ],
+  endpointHealth: [
+    {
+      endpointId: 'e1',
+      name: 'billing',
+      circuit: { state: 'OPEN', consecutiveFailures: 10, openedAt: '2026-10-15T04:58:00Z', retryAt: '2026-10-15T05:01:00Z' },
+      health: {
+        status: 'FAILING',
+        window: '24h',
+        attempts: 20,
+        failedAttempts: 12,
+        successRate: 0.4,
+        latencyP50Ms: 900,
+        latencyP95Ms: 2000,
+        deadLetters: 1,
+        lastSuccessAt: '2026-10-15T04:00:00Z',
+        lastFailure: { at: '2026-10-15T04:58:00Z', outcome: 'HTTP_SERVER_ERROR', responseStatus: 503, error: 'HTTP 503' },
+      },
+    },
+    {
+      endpointId: 'e2',
+      name: 'crm',
+      circuit: { state: 'CLOSED', consecutiveFailures: 0, openedAt: null, retryAt: null },
+      health: {
+        status: 'NO_DATA',
+        window: '24h',
+        attempts: 0,
+        failedAttempts: 0,
+        successRate: null,
+        latencyP50Ms: null,
+        latencyP95Ms: null,
+        deadLetters: 0,
+        lastSuccessAt: null,
+        lastFailure: null,
+      },
+    },
+  ],
 };
 
 describe('OverviewPage', () => {
@@ -46,6 +82,19 @@ describe('OverviewPage', () => {
     expect(screen.getByText('4 / 1')).toBeInTheDocument();
     expect(screen.getByText('RATE_LIMITED')).toBeInTheDocument();
     expect(screen.getByText('429')).toBeInTheDocument();
+  });
+
+  it('lists endpoint health worst first, with open circuits flagged', async () => {
+    mockApi({ '/api/v1/metrics/overview': overview });
+    renderAt('/overview', '/overview', <OverviewPage />);
+    expect(await screen.findByText('Failing')).toBeInTheDocument();
+    expect(screen.getByText('Circuit open')).toBeInTheDocument();
+    expect(screen.getByText('No data')).toBeInTheDocument();
+    expect(screen.getByText('40.0%')).toBeInTheDocument();
+    expect(screen.getByText('2000 ms')).toBeInTheDocument();
+    expect(screen.getByText('HTTP 503')).toBeInTheDocument();
+    const badges = screen.getAllByTestId('health-badge').map((b) => b.textContent);
+    expect(badges).toEqual(['Failing', 'No data']);
   });
 
   it('shows a dash instead of a rate when nothing finished in the window', async () => {

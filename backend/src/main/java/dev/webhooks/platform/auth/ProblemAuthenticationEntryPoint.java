@@ -23,10 +23,12 @@ public class ProblemAuthenticationEntryPoint implements AuthenticationEntryPoint
     public void commence(HttpServletRequest request, HttpServletResponse response, AuthenticationException ex)
             throws IOException {
         var body = GlobalExceptionHandler.problem(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED",
-                "A valid API key is required (Authorization: Bearer whk_...)");
+                "Sign in, or send a valid API key (Authorization: Bearer whk_...)");
         response.setStatus(HttpStatus.UNAUTHORIZED.value());
         response.setContentType(MediaType.APPLICATION_PROBLEM_JSON_VALUE);
-        response.setHeader("WWW-Authenticate", "Bearer");
+        if (ApiKeyAuthenticationFilter.hasBearerToken(request)) {
+            response.setHeader("WWW-Authenticate", "Bearer error=\"invalid_token\"");
+        }
         objectMapper.writeValue(response.getOutputStream(), body);
     }
 }

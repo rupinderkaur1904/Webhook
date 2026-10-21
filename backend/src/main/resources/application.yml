@@ -16,6 +16,19 @@ spring:
       - org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   jackson:
     default-property-inclusion: always
+    # Bounds on untrusted JSON (bodies are also capped at webhooks.limits.max-request-bytes).
+    factory:
+      constraints:
+        read:
+          max-nesting-depth: 64
+          max-string-length: 262144
+          max-name-length: 1000
+  session:
+    timeout: ${SESSION_TIMEOUT:8h}
+    jdbc:
+      # Tables come from Flyway (V4), not from Spring Session's own initializer.
+      initialize-schema: never
+      cleanup-cron: "0 */10 * * * *"
   mvc:
     problemdetails:
       enabled: true
@@ -23,6 +36,10 @@ spring:
 server:
   port: ${PORT:8080}
   shutdown: graceful
+  # Forwarded headers are handled only for webhooks.proxy.trusted-proxies (TrustedProxyConfig). "none"
+  # also stops Spring Boot from switching on its own handling when it detects a cloud platform, which
+  # would trust every private-network address.
+  forward-headers-strategy: none
   error:
     include-stacktrace: never
     include-message: never
@@ -31,7 +48,11 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # /actuator/prometheus needs METRICS_TOKEN as a bearer token (see SecurityConfig).
+        include: health,prometheus
+  metrics:
+    tags:
+      application: webhook-platform
   endpoint:
     health:
       show-details: never
@@ -51,3 +72,34 @@ webhooks:
     encryption-key: ${SECRET_ENCRYPTION_KEY:}
   ssrf:
     allowed-hosts: ${SSRF_ALLOWED_HOSTS:}
+  auth:
+    registration-enabled: ${REGISTRATION_ENABLED:false}
+    # The session cookie (WEBHOOKS_SESSION) is always HttpOnly and SameSite=Lax. Set
+    # SESSION_COOKIE_SECURE=false only for plain-HTTP local development.
+    session-cookie-secure: ${SESSION_COOKIE_SECURE:true}
+  metrics:
+    token: ${METRICS_TOKEN:}
+  # CIDR ranges of the hosting platform's reverse proxy (README "Deployment"). Empty: trust no
+  # forwarding headers.
+  proxy:
+    trusted-proxies: ${TRUSTED_PROXIES:}
+    # Logs each request's TCP peer and forwarding headers (first deployment only).
+    diagnostics: ${PROXY_DIAGNOSTICS:false}
+  # Per-endpoint circuit breaker (README "Circuit breaker and endpoint health").
+  circuit:
+    failure-threshold: ${CIRCUIT_FAILURE_THRESHOLD:10}
+    base-cooldown: ${CIRCUIT_BASE_COOLDOWN:30s}
+    max-cooldown: ${CIRCUIT_MAX_COOLDOWN:30m}
+
+logging:
+  structured:
+    # LOG_FORMAT=ecs (or logstash, gelf) switches the console to one JSON object per line, with the
+    # request id and delivery context (MDC) as fields. Empty: the plain-text pattern below.
+    format:
+      console: ${LOG_FORMAT:}
+    json:
+      customizer: dev.webhooks.platform.observability.SecretMaskingJsonMembersCustomizer
+  pattern:
+    # Request id on every line; anything shaped like a signing secret or API key is masked, as a
+    # backstop (no code path is meant to log one).
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p [%15.15t] [%X{requestId:-}] %-40.40logger{39} : %replace(%m){'(whsec_|whk_)[A-Za-z0-9+/=_-]+', '$1****'}%n%replace(%wEx){'(whsec_|whk_)[A-Za-z0-9+/=_-]+', '$1****'}"

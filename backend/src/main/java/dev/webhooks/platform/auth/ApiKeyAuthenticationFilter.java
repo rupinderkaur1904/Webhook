@@ -18,7 +18,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 /**
  * Authenticates {@code Authorization: Bearer whk_...} API keys. Keys are looked up by their SHA-256
  * hash; the plaintext is never stored. A malformed, unknown or revoked key fails the request with
- * 401 rather than falling through as anonymous.
+ * 401 rather than falling through as anonymous. A valid key replaces any session authentication on
+ * the same request, so a Bearer request (which skips CSRF) never acts with session privileges.
  */
 public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
 
@@ -30,15 +31,26 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         this.entryPoint = entryPoint;
     }
 
+    /** True if the request carries {@code Authorization: Bearer ...} (and so is exempt from CSRF). */
+    public static boolean hasBearerToken(HttpServletRequest request) {
+        String header = request.getHeader("Authorization");
+        return header != null && header.regionMatches(true, 0, "Bearer ", 0, 7);
+    }
+
+    /** The metrics endpoint has its own bearer token ({@link MetricsTokenFilter}). */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        return MetricsTokenFilter.PATH.equals(request.getRequestURI());
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.regionMatches(true, 0, "Bearer ", 0, 7)) {
+        if (!hasBearerToken(request)) {
             chain.doFilter(request, response);
             return;
         }
-        String key = header.substring(7).trim();
+        String key = request.getHeader("Authorization").substring(7).trim();
         var principal = key.startsWith(Tokens.API_KEY_PREFIX)
                 ? apiKeys.findActiveByHash(Tokens.sha256(key))
                 : java.util.Optional.<AccountPrincipal>empty();
@@ -50,7 +62,7 @@ public class ApiKeyAuthenticationFilter extends OncePerRequestFilter {
         AccountPrincipal account = principal.get();
         apiKeys.touch(UUID.fromString(account.credentialId().substring("api-key:".length())));
         var authentication = UsernamePasswordAuthenticationToken.authenticated(
-                account, null, List.of(new SimpleGrantedAuthority("ROLE_API_CLIENT")));
+                account, null, List.of(new SimpleGrantedAuthority(AccountPrincipal.ROLE_API_CLIENT)));
         var context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(authentication);
         SecurityContextHolder.setContext(context);

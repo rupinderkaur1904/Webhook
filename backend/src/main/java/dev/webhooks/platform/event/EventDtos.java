@@ -1,6 +1,8 @@
 package dev.webhooks.platform.event;
 
+import dev.webhooks.platform.common.ApiNullable;
 import dev.webhooks.platform.delivery.DeliveryDtos.DeliverySummary;
+import dev.webhooks.platform.delivery.DeliveryStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -25,7 +27,7 @@ public final class EventDtos {
             @Size(max = 50) List<@NotNull UUID> endpointIds,
             OffsetDateTime occurredAt) {}
 
-    public record AcceptedDelivery(UUID id, UUID endpointId, String status) {}
+    public record AcceptedDelivery(UUID id, UUID endpointId, DeliveryStatus status) {}
 
     public record EventAcceptedResponse(
             UUID id, String eventType, String idempotencyKey, Instant createdAt, List<AcceptedDelivery> deliveries) {}
@@ -39,7 +41,7 @@ public final class EventDtos {
             String eventType,
             String idempotencyKey,
             Instant createdAt,
-            Instant occurredAt,
+            @ApiNullable Instant occurredAt,
             JsonNode body,
             List<DeliverySummary> deliveries) {}
 }

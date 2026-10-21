@@ -1,8 +1,10 @@
-import { AppShell, Button, Group, NavLink, Text } from '@mantine/core';
-import { useState } from 'react';
+import { AppShell, Button, Center, Group, Loader, NavLink, Text } from '@mantine/core';
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { getApiKey, setApiKey } from './api/client';
-import { ConnectPage } from './pages/ConnectPage';
+import { onUnauthorized } from './api/client';
+import { useLogout, useMe } from './api/hooks';
+import { ApiKeysPage } from './pages/ApiKeysPage';
 import { DeadLettersPage } from './pages/DeadLettersPage';
 import { DeliveriesPage } from './pages/DeliveriesPage';
 import { DeliveryDetailPage } from './pages/DeliveryDetailPage';
@@ -10,6 +12,7 @@ import { EndpointDetailPage } from './pages/EndpointDetailPage';
 import { EndpointsPage } from './pages/EndpointsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { EventsPage } from './pages/EventsPage';
+import { LoginPage } from './pages/LoginPage';
 import { OverviewPage } from './pages/OverviewPage';
 
 const NAV = [
@@ -18,14 +21,27 @@ const NAV = [
   { to: '/events', label: 'Events' },
   { to: '/deliveries', label: 'Deliveries' },
   { to: '/dead-letters', label: 'Dead letters' },
+  { to: '/api-keys', label: 'API keys' },
 ];
 
 export function App() {
-  const [connected, setConnected] = useState(() => getApiKey() !== null);
+  const me = useMe();
+  const logout = useLogout();
+  const queryClient = useQueryClient();
   const location = useLocation();
 
-  if (!connected) {
-    return <ConnectPage onConnected={() => setConnected(true)} />;
+  // Any 401 (expired or revoked session) drops back to the login page.
+  useEffect(() => onUnauthorized(() => queryClient.setQueryData(['me'], null)), [queryClient]);
+
+  if (me.isLoading) {
+    return (
+      <Center h="100vh">
+        <Loader aria-label="Loading" />
+      </Center>
+    );
+  }
+  if (!me.data) {
+    return <LoginPage />;
   }
 
   return (
@@ -33,16 +49,14 @@ export function App() {
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Text fw={600}>Webhook Platform</Text>
-          <Button
-            variant="subtle"
-            size="xs"
-            onClick={() => {
-              setApiKey(null);
-              setConnected(false);
-            }}
-          >
-            Disconnect
-          </Button>
+          <Group gap="xs">
+            <Text size="sm" c="dimmed">
+              {me.data.email}
+            </Text>
+            <Button variant="subtle" size="xs" loading={logout.isPending} onClick={() => logout.mutate()}>
+              Sign out
+            </Button>
+          </Group>
         </Group>
       </AppShell.Header>
       <AppShell.Navbar p="xs">
@@ -61,6 +75,7 @@ export function App() {
           <Route path="/deliveries" element={<DeliveriesPage />} />
           <Route path="/deliveries/:id" element={<DeliveryDetailPage />} />
           <Route path="/dead-letters" element={<DeadLettersPage />} />
+          <Route path="/api-keys" element={<ApiKeysPage />} />
           <Route path="*" element={<Navigate to="/overview" replace />} />
         </Routes>
       </AppShell.Main>

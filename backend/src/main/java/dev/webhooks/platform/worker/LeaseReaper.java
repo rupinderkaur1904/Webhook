@@ -1,6 +1,8 @@
 package dev.webhooks.platform.worker;
 
+import dev.webhooks.platform.circuit.CircuitService;
 import dev.webhooks.platform.config.WebhookProperties;
+import io.micrometer.core.instrument.MeterRegistry;
 import dev.webhooks.platform.delivery.DeliveryRepository;
 import dev.webhooks.platform.delivery.DeliveryRepository.ExpiredLease;
 import dev.webhooks.platform.retry.RetryPolicy;
@@ -26,6 +28,12 @@ import org.springframework.transaction.support.TransactionTemplate;
  * Abandoned attempts count against the budget, so a payload that crashes workers cannot loop
  * forever. Every instance runs a reaper; {@code SKIP LOCKED} keeps them from processing the same row,
  * and the lease-token guard keeps a reaped delivery safe from a worker that reports late.
+ *
+ * <p>Each pass also cancels queued deliveries whose endpoint was deleted while they were being
+ * re-queued (a race the deletion's own cancel cannot see).
+ *
+ * <p>The same loop moves circuit breakers whose cool-down has passed to HALF_OPEN and picks their
+ * probe delivery ({@link CircuitService#startProbes}).
  */
 @Component
 public class LeaseReaper implements SmartLifecycle {
@@ -36,20 +44,37 @@ public class LeaseReaper implements SmartLifecycle {
     private final DeliveryRepository deliveries;
     private final RetryPolicy retryPolicy;
     private final TransactionTemplate tx;
+    private final CircuitService circuits;
+    private final MeterRegistry meters;
 
     private volatile boolean running;
     private Thread thread;
 
     public LeaseReaper(WebhookProperties properties, DeliveryRepository deliveries, RetryPolicy retryPolicy,
-            TransactionTemplate tx) {
+            TransactionTemplate tx, CircuitService circuits, MeterRegistry meters) {
+        this.circuits = circuits;
+        this.meters = meters;
         this.config = properties.worker();
         this.deliveries = deliveries;
         this.retryPolicy = retryPolicy;
         this.tx = tx;
     }
 
-    /** Recovers every currently expired lease, in batches. Returns how many deliveries were recovered. */
+    /**
+     * Recovers every currently expired lease, in batches, then cancels any queued delivery left behind
+     * for a deleted endpoint ({@link DeliveryRepository#cancelQueuedForDeletedEndpoints}). Returns how
+     * many deliveries were recovered from expired leases.
+     */
     public int reapExpired() {
+        int total = reapExpiredLeases();
+        int cancelled = deliveries.cancelQueuedForDeletedEndpoints();
+        if (cancelled > 0) {
+            log.warn("Cancelled {} queued deliveries whose endpoint was deleted concurrently", cancelled);
+        }
+        return total;
+    }
+
+    private int reapExpiredLeases() {
         int total = 0;
         while (true) {
             Integer recovered = tx.execute(status -> reapBatch());
@@ -72,6 +97,7 @@ public class LeaseReaper implements SmartLifecycle {
             if (deliveries.releaseExpiredLease(lease, delay, "Lease expired: no result was recorded for attempt "
                     + lease.attemptCount())) {
                 recovered++;
+                meters.counter("webhooks.leases.expired").increment();
                 log.warn("Recovered delivery {} from expired lease of {} (attempt {}/{}): {}", lease.deliveryId(),
                         lease.leaseOwner(), lease.attemptCount(), lease.maxAttempts(),
                         lease.endpointDeleted() ? "cancelled, endpoint deleted"
@@ -97,6 +123,11 @@ public class LeaseReaper implements SmartLifecycle {
                 reapExpired();
             } catch (RuntimeException e) {
                 log.error("Lease reaper run failed; retrying after the reaper interval", e);
+            }
+            try {
+                circuits.startProbes(config.reaperBatchSize());
+            } catch (RuntimeException e) {
+                log.error("Circuit probe selection failed; retrying after the reaper interval", e);
             }
             try {
                 Thread.sleep(config.reaperInterval());

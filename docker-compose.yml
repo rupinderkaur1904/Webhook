@@ -1,5 +1,11 @@
-# Local PostgreSQL for development. The backend and simulator run from the command line
-# (see README); a full containerized stack is added in the deployment stage.
+# The whole stack on one machine: PostgreSQL, the platform and the receiver simulator.
+#
+#   docker compose up --build        # dashboard at http://localhost:8080 (dev@localhost / local-dev-password)
+#   docker compose up db             # only PostgreSQL, for running the backend from the command line
+#
+# The app runs with the "local" profile: well-known development secrets, plain-HTTP cookies and
+# the simulator on the SSRF allowlist. Never expose this configuration publicly; see
+# docs/DEPLOYMENT.md for production settings.
 services:
   db:
     image: postgres:16-alpine
@@ -8,12 +14,56 @@ services:
       POSTGRES_USER: webhooks
       POSTGRES_PASSWORD: webhooks
     ports:
-      - "5432:5432"
+      # Host port only; the app reaches the database inside the Compose network. Change DB_PORT in
+      # .env if PostgreSQL already runs on this machine.
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U webhooks -d webhooks"]
       interval: 5s
       retries: 10
+
+  app:
+    build:
+      context: .
+      target: app
+    image: webhook-platform:local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+      DATABASE_URL: jdbc:postgresql://db:5432/webhooks
+      DATABASE_USERNAME: webhooks
+      DATABASE_PASSWORD: webhooks
+      # The first dashboard account, created on first start if it does not exist yet. Changing these
+      # later adds another account; it does not change an existing account's password.
+      WEBHOOKS_BOOTSTRAP_EMAIL: ${ADMIN_EMAIL:-dev@localhost}
+      WEBHOOKS_BOOTSTRAP_PASSWORD: ${ADMIN_PASSWORD:-local-dev-password}
+      # Receivers the platform may call even though they are on private addresses: the simulator,
+      # and a receiver example running on this computer (examples/receivers, port 3000).
+      WEBHOOKS_SSRF_ALLOWED_HOSTS: ${ALLOWED_RECEIVER_HOSTS:-simulator:9090,host.docker.internal:3000}
+    # Docker Desktop provides host.docker.internal; this line adds it on Linux too.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    # SIGTERM first; the worker gets 20s to finish in-flight deliveries.
+    stop_grace_period: 30s
+
+  simulator:
+    build:
+      context: .
+      target: simulator
+    image: webhook-simulator:local
+    environment:
+      # Local only: the control API (receiver config, request logs) stays open without a token.
+      # A public deployment sets SIMULATOR_CONTROL_TOKEN instead; without either, the simulator
+      # refuses to start.
+      SIMULATOR_OPEN_CONTROL_API: "true"
+    ports:
+      - "${SIMULATOR_PORT:-9090}:9090"
+
 volumes:
   pgdata:

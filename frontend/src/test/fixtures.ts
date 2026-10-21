@@ -1,4 +1,18 @@
-import type { DeliveryDetail, DeliverySummary, Endpoint } from '../api/types';
+import type { DeliveryDetail, DeliverySummary, Endpoint, EndpointHealth } from '../api/types';
+
+export const healthy: EndpointHealth = {
+  status: 'HEALTHY',
+  window: '24h',
+  attempts: 40,
+  failedAttempts: 2,
+  successRate: 0.95,
+  latencyP50Ms: 42,
+  latencyP95Ms: 180,
+  deadLetters: 0,
+  lastSuccessAt: '2026-10-15T04:58:00Z',
+  lastFailure: { at: '2026-10-15T02:00:00Z', outcome: 'HTTP_SERVER_ERROR', responseStatus: 502, error: 'HTTP 502' },
+};
+
 
 export const endpoint: Endpoint = {
   id: 'eeeeeeee-2222-3333-4444-555555555555',
@@ -8,6 +22,9 @@ export const endpoint: Endpoint = {
   eventTypes: ['order.*'],
   enabled: true,
   secretPrefix: 'whsec_abcd',
+  previousSecretExpiresAt: null,
+  circuit: { state: 'CLOSED', consecutiveFailures: 0, openedAt: null, retryAt: null },
+  health: healthy,
   createdAt: '2026-10-15T03:00:00Z',
   updatedAt: '2026-10-15T03:00:00Z',
 };
