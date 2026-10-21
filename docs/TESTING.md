@@ -2,11 +2,11 @@
 
 | Suite | Command | What it needs | Count (last run) |
 |---|---|---|---|
-| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 543 |
-| Receiver simulator | included in `./mvnw verify` | nothing | 79 |
-| Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 36 |
+| Backend unit + integration | `./mvnw verify` | Docker (Testcontainers) or `TEST_DATABASE_URL` | 544 |
+| Receiver simulator | included in `./mvnw verify` | nothing | 80 |
+| Dashboard components | `cd frontend && npm test && npm run typecheck` | Node 22 | 56 |
 | API contract and generated types | `OpenApiContractTest` (in `verify`); `npm run gen:api && git diff --exit-code src/api/schema.ts` | | 1 |
-| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 18 |
+| Browser end-to-end (Playwright) | `cd frontend && npm run e2e` | the Compose stack running | 23 |
 | Receiver examples | see [below](#receiver-examples) | Java 21, Node 22, Python 3 | 22 / 19 / 19 |
 | Compose demos | `scripts/demo.sh <scenario>` | the Compose stack, bash, `jq` | 14 scenarios |
 | Local load benchmark | `python3 scripts/bench.py` | the Compose stack, Python 3 | see [below](#local-load-benchmark) |

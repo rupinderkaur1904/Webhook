@@ -1,4 +1,5 @@
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { DeliveriesPage } from '../pages/DeliveriesPage';
 import { deadLetter, endpoint } from './fixtures';
@@ -15,9 +16,10 @@ describe('DeliveriesPage', () => {
     renderAt('/deliveries', '/deliveries', <DeliveriesPage />);
 
     expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'orders-service' })).toBeInTheDocument();
-    expect(screen.getByText('503')).toBeInTheDocument();
-    expect(screen.getByText('DEAD LETTERED')).toBeInTheDocument();
+    const row = (await screen.findByRole('link', { name: 'orders-service' })).closest('tr')!;
+    expect(within(row).getByText('503')).toBeInTheDocument();
+    expect(within(row).getByText('Dead letter')).toBeInTheDocument();
+    expect(within(row).getByText('1/1')).toBeInTheDocument();
 
     expect(fetchedUrls(fetchMock)).toContain('/api/v1/deliveries?limit=50');
     const call = fetchMock.mock.calls.find((c) => String(c[0]).startsWith('/api/v1/deliveries'))!;
@@ -71,5 +73,26 @@ describe('DeliveriesPage', () => {
     });
     renderAt('/deliveries', '/deliveries', <DeliveriesPage />);
     expect(await screen.findByText('replay')).toBeInTheDocument();
+  });
+
+  it('filters by status from the chips, with live counts from the overview', async () => {
+    const fetchMock = mockApi({
+      '/api/v1/deliveries': empty,
+      '/api/v1/endpoints': { items: [] },
+      '/api/v1/metrics/overview': {
+        current: { pending: 6, retrying: 4, inFlight: 3 },
+        deliveriesSucceeded: 1241,
+        deliveriesDeadLettered: { total: 7, byReason: {} },
+      },
+    });
+    renderAt('/deliveries', '/deliveries', <DeliveriesPage />);
+
+    const chips = screen.getByRole('group', { name: 'Filter by status' });
+    const retrying = await within(chips).findByRole('button', { name: /Retrying\s*4/ });
+    expect(within(chips).getByRole('button', { name: /Delivered\s*1,241/ })).toBeInTheDocument();
+    await userEvent.click(retrying);
+    expect(retrying).toHaveAttribute('aria-pressed', 'true');
+    expect(fetchedUrls(fetchMock)).toContain('/api/v1/deliveries?limit=50&status=RETRYING');
+    expect(fetchedUrls(fetchMock)).toContain('/api/v1/metrics/overview?window=24h');
   });
 });

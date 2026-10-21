@@ -60,8 +60,8 @@ describe('EventDetailPage', () => {
     renderAt(`/events/${event.id}`, '/events/:id', <EventDetailPage />);
 
     expect(await screen.findByText(/ord_42/)).toBeInTheDocument();
-    expect(screen.getByText('DEAD LETTERED')).toBeInTheDocument();
-    expect(screen.getByText('DELIVERED')).toBeInTheDocument();
+    expect(screen.getByText('Dead letter')).toBeInTheDocument();
+    expect(screen.getByText('Delivered')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Replay' })).toBeInTheDocument();
   });
 });
@@ -78,7 +78,7 @@ describe('EndpointDetailPage', () => {
 
     expect(await screen.findByText('https://orders.example.com/hooks')).toBeInTheDocument();
     expect(screen.getByText('order.*')).toBeInTheDocument();
-    expect(await screen.findByText('DEAD LETTERED')).toBeInTheDocument();
+    expect(await screen.findByText('Dead letter')).toBeInTheDocument();
     expect(fetchedUrls(fetchMock)).toContain(`/api/v1/deliveries?limit=50&endpointId=${endpoint.id}`);
 
     await userEvent.click(screen.getByRole('switch', { name: 'Enabled' }));

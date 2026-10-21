@@ -10,7 +10,7 @@ export default async function globalSetup(config: FullConfig) {
   const executablePath = config.projects[0]?.use.launchOptions?.executablePath;
   const browser = await chromium.launch(executablePath ? { executablePath } : {});
   const page = await browser.newPage({ baseURL: BASE_URL });
-  await page.goto('/');
+  await page.goto('/overview');
   await page.getByLabel('Email').fill(ADMIN_EMAIL);
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in' }).click();

@@ -71,7 +71,10 @@ export function EndpointHealthCard({ endpoint }: { endpoint: Endpoint }) {
             {h.lastFailure.error && h.lastFailure.responseStatus == null && ` — ${h.lastFailure.error}`}
           </Text>
         )}
-        <Alert color={endpoint.circuit.state === 'CLOSED' ? 'gray' : endpoint.circuit.state === 'OPEN' ? 'red' : 'orange'} variant="light">
+        <Alert
+          color={endpoint.circuit.state === 'CLOSED' ? 'gray' : endpoint.circuit.state === 'OPEN' ? 'red' : 'orange'}
+          variant={endpoint.circuit.state === 'CLOSED' ? 'default' : 'light'}
+        >
           <Group justify="space-between" wrap="nowrap" align="flex-start">
             <Text size="sm">
               <CircuitExplanation endpoint={endpoint} />

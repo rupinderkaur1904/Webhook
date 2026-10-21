@@ -1,6 +1,6 @@
 import { Alert, Button, Center, Loader, Stack, Text } from '@mantine/core';
 import type { ReactNode } from 'react';
-import { ApiError } from '../api/client';
+import { ApiError, errorMessage } from '../api/client';
 
 /** Shared loading and error rendering so every data view handles both states the same way. */
 export function QueryState({
@@ -22,7 +22,7 @@ export function QueryState({
     );
   }
   if (error) {
-    const message = error instanceof ApiError ? error.problem.detail : 'Something went wrong';
+    const message = error instanceof ApiError ? errorMessage(error) : 'Something went wrong';
     return (
       <Alert color="red" title="Could not load data">
         <Stack gap="xs" align="flex-start">

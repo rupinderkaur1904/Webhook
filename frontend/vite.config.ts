@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { inlineAsset } from './src/build/inlineAsset';
 
 // The same browser hardening the backend sends (SecurityConfig.CONTENT_SECURITY_POLICY); `vite preview`
 // serves the production build with it, so a CSP violation shows up before deployment.
@@ -15,6 +16,7 @@ const securityHeaders = {
 
 export default defineConfig({
   plugins: [react()],
+  build: { assetsInlineLimit: inlineAsset },
   server: {
     port: 5173,
     // Same-origin in development: the dashboard calls /api/... and Vite forwards to the backend. The

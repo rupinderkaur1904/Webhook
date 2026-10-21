@@ -72,6 +72,9 @@ describe('DeliveryDetailPage replay', () => {
 
     expect(await screen.findByText(/Replays used: 0 of 10/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Replay' }));
+    // Nothing is sent until the side panel is confirmed.
+    expect(fetchMock.mock.calls.some((c) => String(c[0]).endsWith('/replay'))).toBe(false);
+    await userEvent.click(await screen.findByRole('button', { name: 'Replay delivery' }));
 
     expect(await screen.findByText('Replay queued as a new delivery')).toBeInTheDocument();
     const post = fetchMock.mock.calls.find((c) => String(c[0]).endsWith('/replay'))!;
@@ -105,6 +108,7 @@ describe('DeliveryDetailPage replay', () => {
     renderAt(`/deliveries/${deadLetter.id}`, '/deliveries/:id', <DeliveryDetailPage />);
 
     await userEvent.click(await screen.findByRole('button', { name: 'Replay' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Replay delivery' }));
     expect(await screen.findByText('Replay rejected')).toBeInTheDocument();
     expect(screen.getByText('A delivery for this event and endpoint is already in progress')).toBeInTheDocument();
   });

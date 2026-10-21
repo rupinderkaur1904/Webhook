@@ -178,8 +178,12 @@ test('the overview shows delivery metrics and endpoint health', async ({ page, r
   const id = await submitEvent(request, endpointId!);
   await expect.poll(() => deliveryStatus(request, id), { timeout: 30_000 }).toBe('DELIVERED');
   await page.goto('/overview');
-  for (const label of ['Events submitted', 'Delivered', 'Dead-lettered', 'Delivery success rate', 'Attempt latency']) {
+  for (const label of ['Delivery success rate', 'Attempt success rate', 'Attempt latency p50', 'Dead-lettered · 24h']) {
     await expect(page.getByText(label, { exact: true }).first()).toBeVisible();
+  }
+  await expect(page.getByRole('heading', { name: 'Delivery pipeline' })).toBeVisible();
+  for (const count of [/events · 24h/, /pending/, /retrying/, /in flight/, /delivered · 24h/, /dead-lettered · 24h/]) {
+    await expect(page.getByRole('link', { name: count })).toBeVisible();
   }
   await expect(page.getByRole('heading', { name: 'Endpoint health' })).toBeVisible();
   await expect(page.getByRole('row').filter({ hasText: receiver }).first()).toBeVisible();
@@ -205,7 +209,7 @@ test.describe('sign-out', () => {
   test.use({ storageState: { cookies: [], origins: [] } });
 
   test('the old session cookie is useless after sign-out', async ({ page, playwright }) => {
-    await page.goto('/');
+    await page.goto('/overview');
     await page.getByLabel('Email').fill(process.env.E2E_EMAIL ?? 'dev@localhost');
     await page.getByLabel('Password').fill(process.env.E2E_PASSWORD ?? 'local-dev-password');
     await page.getByRole('button', { name: 'Sign in' }).click();

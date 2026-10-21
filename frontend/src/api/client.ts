@@ -90,7 +90,33 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** The message to show for a failed request: the server's problem detail when there is one. */
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Name',
+  url: 'URL',
+  description: 'Description',
+  eventTypes: 'Event types',
+  eventType: 'Event type',
+  payload: 'Payload',
+  endpointIds: 'Endpoints',
+  gracePeriodHours: 'Grace period',
+  email: 'Email',
+  password: 'Password',
+};
+
+/** `eventTypes[1]` → `Event types (2nd entry)`; unknown fields are shown as sent. */
+function fieldLabel(field: string): string {
+  const match = /^(\w+)\[(\d+)\]$/.exec(field);
+  if (match) return `${FIELD_LABELS[match[1]] ?? match[1]} (entry ${Number(match[2]) + 1})`;
+  return FIELD_LABELS[field] ?? field;
+}
+
+/**
+ * The message to show for a failed request: the server's problem detail, followed by what is wrong
+ * with each field when the server says (a bare "Request validation failed" does not tell anyone what to fix).
+ */
 export function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.problem.detail : 'Request failed';
+  if (!(error instanceof ApiError)) return 'Request failed';
+  const { detail, errors = [] } = error.problem;
+  const fields = errors.filter((e) => e.message !== detail).map((e) => `${fieldLabel(e.field)}: ${e.message}`);
+  return fields.length === 0 ? detail : `${detail}. ${fields.join('; ')}`;
 }
