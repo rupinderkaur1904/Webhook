@@ -63,7 +63,10 @@ test('an event published from the dashboard fans out to the matching endpoint on
     // Other endpoints that take every event may also be listed; this one is there because its filter matches.
     await expect(dialog.getByText(/deliver(y|ies) queued/)).toBeVisible();
     await dialog.getByRole('listitem').filter({ hasText: receiver }).getByRole('link').click();
-    await expect(page.getByText('Delivered').first()).toBeVisible({ timeout: 30_000 });
+    await expect(page).toHaveURL(/\/deliveries\/[0-9a-f-]+$/);
+    // Wait on the delivery itself: the page shows the word "Delivered" in labels before the attempt finishes.
+    const deliveryId = page.url().split('/').pop()!;
+    await expect.poll(() => deliveryStatus(request, deliveryId), { timeout: 30_000 }).toBe('DELIVERED');
     expect((await receivedRequests(request, receiver)).at(-1)?.signatureResult).toBe('VALID');
 
     // A type outside the endpoint's filter is accepted, but nothing is queued for this endpoint.
