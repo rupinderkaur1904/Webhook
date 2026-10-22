@@ -1,0 +1,9 @@
+# OSV-Scanner configuration for the CI "dependency-scan" job (.github/workflows/ci.yml).
+#
+# Prefer upgrading the dependency. Only when a finding cannot affect Relay, or no fix exists yet, record
+# it here with the reason and a date by which to look again, e.g.:
+#
+# [[IgnoredVulns]]
+# id = "GHSA-xxxx-xxxx-xxxx"
+# ignoreUntil = 2027-01-31
+# reason = "Only reachable through <feature>, which Relay does not use"

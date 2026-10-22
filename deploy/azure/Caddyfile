@@ -1,0 +1,25 @@
+# HTTPS in front of Relay. Caddy obtains and renews the certificate for RELAY_DOMAIN (Let's Encrypt,
+# HTTP-01 on port 80) and redirects HTTP to HTTPS.
+{
+	email {$ACME_EMAIL}
+	# The admin API is not needed: configuration changes go through a container restart.
+	admin off
+	servers {
+		# HTTP/3 would need UDP 443 open in the network security group; TCP is enough here.
+		protocols h1 h2
+	}
+}
+
+{$RELAY_DOMAIN} {
+	# Prometheus metrics stay inside the VM (docs/DEPLOYMENT-AZURE.md, "Metrics").
+	@metrics path /actuator/prometheus /actuator/prometheus/*
+	respond @metrics 404
+
+	encode zstd gzip
+
+	# Caddy trusts no upstream proxy, so it ignores any X-Forwarded-For the client sends and passes
+	# the connecting address. The platform trusts that header only from Caddy (TRUSTED_PROXIES).
+	reverse_proxy app:8080
+
+	header -Server
+}

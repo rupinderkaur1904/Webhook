@@ -40,7 +40,8 @@ Open http://localhost:8080 for the landing page, or http://localhost:8080/overvi
 | [API.md](docs/API.md) | REST API reference, authentication, OpenAPI and generated types. |
 | [SECURITY.md](docs/SECURITY.md) | Security controls, trusted proxies, the public simulator, known trade-offs. |
 | [TESTING.md](docs/TESTING.md) | Every test suite, what it covers and how to run it. |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Fly.io + Neon deployment, trusted-proxy setup, configuration and operations. |
+| [DEPLOYMENT-AZURE.md](docs/DEPLOYMENT-AZURE.md) | Free deployment on Azure for Students: one VM with Caddy and an egress firewall, Azure PostgreSQL, verification. |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Fly.io + Neon deployment (paid), trusted-proxy setup, configuration and operations. |
 | [AUDIT-REPORT.md](docs/AUDIT-REPORT.md) | Engineering audit of 2026-10-16: what was verified, defects fixed, remaining risks. |
 | [examples/receivers](examples/receivers) | Signature-verifying receivers in Java, Node.js and Python. |
 | [PLAN.md](docs/PLAN.md) | The original design and its decisions. |
@@ -52,6 +53,7 @@ Open http://localhost:8080 for the landing page, or http://localhost:8080/overvi
 - `receiver-simulator/`: a controllable receiver that verifies signatures independently and logs every request.
 - `examples/receivers/`: receiver examples with shared test vectors.
 - `scripts/`: `demo.sh` (every scenario, scripted) and `deploy-fly.sh`.
+- `deploy/azure/`: Azure VM deployment (Compose, Caddy, egress firewall, secrets, verification).
 - `deploy/fly/`: Fly.io configuration.
 
 ## Status

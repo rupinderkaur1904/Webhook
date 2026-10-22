@@ -1,0 +1,20 @@
+# Re-applies the Relay egress rules at boot, after Docker has created its chains.
+#   sudo cp relay-egress.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now relay-egress
+# Assumes this directory is /opt/relay; change ExecStart and EnvironmentFile if it is not.
+[Unit]
+Description=Relay outbound firewall rules (DOCKER-USER)
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Optional overrides: RELAY_SUBNET, DB_SUBNET, DNS_RESOLVER.
+EnvironmentFile=-/opt/relay/egress.env
+ExecStart=/opt/relay/egress-firewall.sh
+ExecStop=/opt/relay/egress-firewall.sh --remove
+
+[Install]
+WantedBy=multi-user.target docker.service

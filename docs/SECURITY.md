@@ -21,6 +21,7 @@ This page describes the controls in place and the trade-offs that remain. The th
 - At registration: `https` only, no credentials or fragment, and every resolved address must be public. Loopback, private, link-local and cloud-metadata ranges, documentation ranges, numeric and hex IP forms (`2130706433`, `0x7f.1`) and IPv6 forms that embed them are all blocked.
 - At send time the HTTP client's DNS resolver repeats the check and connects only to addresses that passed, closing the DNS-rebinding gap. Redirects are never followed.
 - `SSRF_ALLOWED_HOSTS` allowlists exact `host[:port]` entries. It's used for the local simulator and must be empty in production.
+- What the app does not cover: any port is allowed, and so are public addresses that reach a cloud provider's internal services (Azure's `168.63.129.16`, for example). A public deployment needs a network-level egress filter as well; the Azure deployment's `deploy/azure/egress-firewall.sh` allows only TCP 80/443 to public addresses, the database and DNS ([DEPLOYMENT-AZURE.md](DEPLOYMENT-AZURE.md#egress-firewall)).
 
 **Request limits**
 - API request bodies are capped at 256 KB (`413 PAYLOAD_TOO_LARGE`), checked from `Content-Length` and counted while streaming for chunked bodies. JSON nesting is capped at 64 levels.

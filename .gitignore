@@ -7,3 +7,7 @@ target/
 .env
 __pycache__/
 .claude/worktrees/
+# Local copies of the Azure deployment settings (deploy/azure/*.example)
+deploy/azure/rehearsal.env
+deploy/azure/demo-timings.env
+deploy/azure/egress.env
