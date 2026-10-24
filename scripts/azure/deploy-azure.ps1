@@ -104,17 +104,28 @@ if (-not (az network public-ip show -g $Rg -n relay-ip --query id -o tsv 2>$null
 $Fqdn = az network public-ip show -g $Rg -n relay-ip --query dnsSettings.fqdn -o tsv
 Write-Host "Address: $Fqdn"
 
+Step 'SSH key for the VM'
+# A dedicated key: --generate-ssh-keys fails with 'Incorrect padding' when an existing ~/.ssh key is in another format.
+$Key = Join-Path $HOME '.ssh\relay_vm'
+if (-not (Test-Path $Key)) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $Key) | Out-Null
+  Write-Host 'Creating an SSH key. When asked for a passphrase, just press Enter twice.' -ForegroundColor Yellow
+  ssh-keygen -t rsa -b 4096 -f $Key -C relay-vm
+  if (-not (Test-Path "$Key.pub")) { throw 'ssh-keygen did not create the key' }
+}
+Write-Host "Key: $Key"
+
 Step 'VM relay-vm (Ubuntu 24.04, B1s)'
 if (-not (az vm show -g $Rg -n relay-vm --query id -o tsv 2>$null)) {
   AzOk vm create -g $Rg -n relay-vm -l $Region --image Ubuntu2404 --size Standard_B1s `
-    --admin-username azureuser --generate-ssh-keys `
+    --admin-username azureuser --ssh-key-values "$Key.pub" `
     --vnet-name relay-vnet --subnet vm --public-ip-address relay-ip --nsg relay-nsg `
     --os-disk-size-gb 64 --storage-sku Premium_LRS -o none
 }
 Write-Host 'VM running'
 
 Step 'Install Relay on the VM'
-$Ssh = @('-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30')
+$Ssh = @('-i', $Key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30')
 for ($i = 0; $i -lt 20; $i++) { ssh @Ssh "azureuser@$Fqdn" true 2>$null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 10 }
 scp @Ssh (Join-Path $PSScriptRoot 'vm-setup.sh') "azureuser@${Fqdn}:/tmp/vm-setup.sh"
 if ($LASTEXITCODE -ne 0) { throw 'Could not copy vm-setup.sh to the VM' }
