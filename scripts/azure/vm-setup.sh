@@ -42,7 +42,7 @@ step "Egress firewall service"
 cp /opt/relay/relay-egress.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now relay-egress
-/opt/relay/egress-firewall.sh --show | head -20
+/opt/relay/egress-firewall.sh --show | head -20 || true  # head closes the pipe early; pipefail would stop here
 
 step "Secrets and configuration"
 cd /opt/relay
