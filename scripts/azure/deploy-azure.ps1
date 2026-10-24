@@ -6,7 +6,7 @@
     powershell -ExecutionPolicy Bypass -File .\deploy-azure.ps1
 
   Creates in resource group relay-rg: a VNet, a private PostgreSQL 16 Flexible Server (B1ms, 32 GB),
-  an Ubuntu 24.04 B1s VM with a Standard public IP and DNS name, and an NSG (22 from your IP only,
+  an Ubuntu 24.04 VM (B2ats_v2 or B1s) with a Standard public IP and DNS name, and an NSG (22 from your IP only,
   80/443 from anywhere). Then runs vm-setup.sh on the VM. Secrets are written only to
   $HOME\relay-secrets (readable by you only) and /opt/relay/.env on the VM; nothing secret is printed.
   Safe to re-run: existing resources are reused.
@@ -41,9 +41,7 @@ foreach ($ns in 'Microsoft.Network', 'Microsoft.Compute', 'Microsoft.DBforPostgr
 }
 
 Step 'Region checks'
-$vmRestr = az vm list-skus -l $Region --size Standard_B1s --resource-type virtualMachines --query "[?name=='Standard_B1s'].restrictions[]" -o tsv
-if ($vmRestr) { throw "Standard_B1s is restricted in $Region. Re-run with -Region southindia (or another allowed region)." }
-Write-Host 'Standard_B1s available'
+Write-Host "Region $Region (VM size is chosen when the VM is created)"
 
 Step 'Secrets folder'
 $SecretDir = Join-Path $HOME 'relay-secrets'
@@ -115,12 +113,25 @@ if (-not (Test-Path $Key)) {
 }
 Write-Host "Key: $Key"
 
-Step 'VM relay-vm (Ubuntu 24.04, B1s)'
+Step 'VM relay-vm (Ubuntu 24.04)'
+# Both sizes are in the Azure free-services allowance. B1s often has no capacity in Indian regions, so try
+# B2ats_v2 first, then B1s without and with an availability zone.
 if (-not (az vm show -g $Rg -n relay-vm --query id -o tsv 2>$null)) {
-  AzOk vm create -g $Rg -n relay-vm -l $Region --image Ubuntu2404 --size Standard_B1s `
-    --admin-username azureuser --ssh-key-values "$Key.pub" `
-    --vnet-name relay-vnet --subnet vm --public-ip-address relay-ip --nsg relay-nsg `
-    --os-disk-size-gb 64 --storage-sku Premium_LRS -o none
+  $tries = @(@('Standard_B2ats_v2', ''), @('Standard_B1s', ''), @('Standard_B2ats_v2', '1'), @('Standard_B2ats_v2', '2'), @('Standard_B2ats_v2', '3'), @('Standard_B1s', '1'), @('Standard_B1s', '2'), @('Standard_B1s', '3'))
+  $made = $false
+  foreach ($t in $tries) {
+    $zoneArgs = @(); if ($t[1]) { $zoneArgs = @('--zone', $t[1]) }
+    Write-Host "Trying size $($t[0])$(if ($t[1]) { " in zone $($t[1])" })"
+    & az vm create -g $Rg -n relay-vm -l $Region --image Ubuntu2404 --size $t[0] @zoneArgs `
+      --admin-username azureuser --ssh-key-values "$Key.pub" `
+      --vnet-name relay-vnet --subnet vm --public-ip-address relay-ip --nsg relay-nsg `
+      --os-disk-size-gb 64 --storage-sku Premium_LRS -o none --only-show-errors 2>&1 |
+      Select-String -Pattern 'SkuNotAvailable|Code:|Message:' | Select-Object -First 2 | ForEach-Object { Write-Host "  $_" }
+    $state = az vm show -g $Rg -n relay-vm --query provisioningState -o tsv 2>$null
+    if ($state -eq 'Succeeded') { $made = $true; break }
+    if ($state) { Write-Host "  VM ended up '$state'; removing it before the next try"; az vm delete -g $Rg -n relay-vm --yes -o none }
+  }
+  if (-not $made) { throw "No free VM size has capacity in $Region right now. Try again later." }
 }
 Write-Host 'VM running'
 
