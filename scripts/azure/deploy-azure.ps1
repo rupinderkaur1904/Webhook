@@ -79,6 +79,8 @@ if (-not (az postgres flexible-server show -g $Rg -n $PgName --query id -o tsv 2
     --vnet $vnetId --subnet pg --private-dns-zone $zoneId `
     --admin-user relayadmin --admin-password $PgPw --yes -o none
 }
+# Keep the admin password in step with pg-admin.txt, also for a server made by an earlier manual run.
+AzOk postgres flexible-server update -g $Rg -n $PgName --admin-password $PgPw -o none
 AzOk postgres flexible-server parameter set -g $Rg --server-name $PgName --name azure.extensions --value CITEXT -o none
 $PgHost = az postgres flexible-server show -g $Rg -n $PgName --query fullyQualifiedDomainName -o tsv
 Write-Host "PostgreSQL ready: $PgHost (private access only)"

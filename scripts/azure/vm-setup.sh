@@ -6,6 +6,7 @@
 set -euo pipefail
 DOMAIN="$1" EMAIL="$2" PGHOST="$3"
 IFS= read -r PGADMIN_PW
+PGADMIN_PW="${PGADMIN_PW%$'\r'}"  # Windows PowerShell pipes the password with CRLF
 APP_IMAGE=ghcr.io/rupinderkaur1904/webhook-platform@sha256:11b777e74f0516d70c3457797c47edc27e1384b1762b30f25db2ccd8eccfcdbb
 SIM_IMAGE=ghcr.io/rupinderkaur1904/webhook-simulator@sha256:0a0d834b447db3432ab91068393e16c8e6c6a337ca3bdcc8a5fa4c68aa44e684
 step() { printf '\n==== %s\n' "$*"; }
