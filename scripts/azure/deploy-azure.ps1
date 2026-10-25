@@ -136,8 +136,16 @@ if (-not (az vm show -g $Rg -n relay-vm --query id -o tsv 2>$null)) {
 Write-Host 'VM running'
 
 Step 'Install Relay on the VM'
-$Ssh = @('-i', $Key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30')
-for ($i = 0; $i -lt 20; $i++) { ssh @Ssh "azureuser@$Fqdn" true 2>$null; if ($LASTEXITCODE -eq 0) { break }; Start-Sleep 10 }
+$Ssh = @('-i', $Key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes', '-o', 'StrictHostKeyChecking=accept-new', '-o', 'ServerAliveInterval=30', '-o', 'ServerAliveCountMax=4', '-o', 'ConnectTimeout=15')
+$sshOk = $false
+for ($i = 1; $i -le 20; $i++) {
+  Write-Host "Connecting to the VM over SSH ($i/20)"
+  ssh @Ssh "azureuser@$Fqdn" true 2>$null
+  if ($LASTEXITCODE -eq 0) { $sshOk = $true; break }
+  Start-Sleep 10
+}
+if (-not $sshOk) { throw "Cannot SSH to $Fqdn. Check that the VM is running and that your IP is still $MyIp." }
+Write-Host 'Connected. Running vm-setup.sh on the VM (5-10 minutes)'
 scp @Ssh (Join-Path $PSScriptRoot 'vm-setup.sh') "azureuser@${Fqdn}:/tmp/vm-setup.sh"
 if ($LASTEXITCODE -ne 0) { throw 'Could not copy vm-setup.sh to the VM' }
 $PgPw | ssh @Ssh "azureuser@$Fqdn" "sed -i 's/\r`$//' /tmp/vm-setup.sh && sudo bash /tmp/vm-setup.sh '$Fqdn' '$Email' '$PgHost'"
