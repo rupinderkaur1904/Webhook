@@ -74,7 +74,10 @@ ALTER ROLE relay_app LOGIN PASSWORD :'pw';
 GRANT relay_app TO CURRENT_USER WITH SET TRUE;
 SELECT 'CREATE DATABASE webhooks OWNER relay_app' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'webhooks') \gexec
 SQL
-psql -X -q -v ON_ERROR_STOP=1 "host=$PGHOST user=relayadmin dbname=webhooks" -c 'CREATE EXTENSION IF NOT EXISTS citext;'
+# Azure creates the public schema owned by azure_pg_admin, not the database owner, so Flyway (running as
+# relay_app) would get "permission denied for schema public".
+psql -X -q -v ON_ERROR_STOP=1 "host=$PGHOST user=relayadmin dbname=webhooks" \
+  -c 'CREATE EXTENSION IF NOT EXISTS citext;' -c 'ALTER SCHEMA public OWNER TO relay_app;'
 unset PGPASSWORD PGADMIN_PW DB_PW
 echo "relay_app and webhooks ready"
 
