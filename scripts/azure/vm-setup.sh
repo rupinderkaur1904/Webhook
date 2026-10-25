@@ -86,7 +86,7 @@ for i in $(seq 1 10); do
 done
 
 step "Start Caddy and the platform"
-docker compose up -d
+docker compose up -d || true  # caddy waits for a healthy app; the loop below reports why if it is not
 for i in $(seq 1 60); do
   state="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q app)" 2>/dev/null || echo starting)"
   [[ "$state" == healthy ]] && break
