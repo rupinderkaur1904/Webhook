@@ -46,7 +46,7 @@ function CreateApiKeyModal({ opened, onClose }: { opened: boolean; onClose: () =
         >
           <Stack>
             <Text size="sm" c="dimmed">
-              API keys let a producer submit events (POST /api/v1/events) and read data. They cannot change endpoints or keys.
+              API keys let your services send events and read data. They cannot change endpoints or keys.
             </Text>
             <TextInput label="Name" placeholder="orders-service (production)" value={name} onChange={(e) => setName(e.currentTarget.value)} required maxLength={100} />
             {create.isError && <Alert color="red">{errorMessage(create.error)}</Alert>}
@@ -106,7 +106,7 @@ export function ApiKeysPage() {
     <div className="page">
       <PageHeader
         title="API keys"
-        description="Producers authenticate with an API key to submit events. Each key is shown once when it is created."
+        description="Keys your services use to send events. Each key is shown only once."
         actions={<Button onClick={() => setCreating(true)}>Create API key</Button>}
       />
       <CreateApiKeyModal opened={creating} onClose={() => setCreating(false)} />

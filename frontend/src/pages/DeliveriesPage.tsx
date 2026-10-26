@@ -65,7 +65,7 @@ export function DeliveriesPage() {
     <div className="page">
       <PageHeader
         title="Deliveries"
-        description="One row per event × endpoint. Filters live in the URL, so a filtered view can be shared."
+        description="Every attempt to send an event to an endpoint."
       />
       <div className="filters">
         <MultiSelect

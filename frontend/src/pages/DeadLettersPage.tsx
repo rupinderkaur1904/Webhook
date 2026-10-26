@@ -95,8 +95,7 @@ export function DeadLettersPage() {
         title="Dead letters"
         description={
           <>
-            Deliveries that stopped retrying. Nothing here is retried automatically. Replaying one sends the same event (same{' '}
-            <code>webhook-id</code>) to the endpoint's current URL as a new delivery with a fresh retry budget.
+            Deliveries that stopped retrying. Fix the endpoint, then replay to send the same event again.
           </>
         }
       />

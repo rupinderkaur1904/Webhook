@@ -765,14 +765,6 @@ body {
 }
 .hint-box,
 .secret-note,
-.connect-note {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-  margin: 0;
-  font-size: 12.5px;
-  color: var(--dark-text-secondary);
-}
 .hint-box {
   padding: 11px 13px;
   border-radius: var(--radius-control);
@@ -861,10 +853,6 @@ body {
   word-break: break-all;
 }
 .secret-note svg,
-.connect-note svg {
-  flex-shrink: 0;
-  margin-top: 1px;
-}
 .modal-title-icon {
   display: inline-flex;
   align-items: center;
@@ -1146,11 +1134,6 @@ body {
   line-height: 1.5;
   color: var(--dark-text-secondary);
 }
-.connect-note {
-  padding-top: 16px;
-  border-top: 1px solid var(--dark-border);
-  font-size: 12px;
-}
 
 /* ---------- Landing ---------- */
 
@@ -1196,13 +1179,11 @@ body {
   gap: 37px;
   font-size: 14px;
 }
-.lp-nav-links a,
-.lp-nav-github {
+.lp-nav-links a {
   color: var(--dark-text-secondary) !important;
   text-decoration: none;
 }
-.lp-nav-links a:hover,
-.lp-nav-github:hover {
+.lp-nav-links a:hover {
   color: var(--dark-text) !important;
 }
 .lp-nav-actions {
@@ -1217,11 +1198,6 @@ body {
   }
   .lp-nav-inner {
     height: 68px;
-  }
-}
-@media (max-width: 30em) {
-  .lp-nav-github {
-    display: none;
   }
 }
 
@@ -1417,13 +1393,6 @@ body {
   line-height: 1.4;
   color: var(--dark-text-secondary);
 }
-.lp-art-caption {
-  margin: 0;
-  text-align: right;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: #6b7285;
-}
 @media (max-width: 36em) {
   .lp-float-card {
     position: static;
@@ -1532,12 +1501,6 @@ body {
   line-height: 1.22;
   font-weight: 600;
   letter-spacing: -0.015em;
-}
-.lp-footnote {
-  margin: 48px 0 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--paper-ink-secondary);
 }
 .lp-bullets {
   list-style: none;
@@ -2262,4 +2225,203 @@ body {
 }
 .mantine-Text-root a {
   color: var(--accent-teal);
+}
+
+/* ---- Intro splash ------------------------------------------------------------------------------ */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+  color: var(--dark-text);
+  background: radial-gradient(ellipse at 50% 45%, #121826 0%, var(--dark-canvas) 62%);
+  font-family: var(--font-sans);
+  outline: none;
+  transition:
+    opacity 650ms ease,
+    transform 650ms cubic-bezier(0.4, 0, 0.2, 1),
+    filter 650ms ease;
+}
+.intro-leaving {
+  opacity: 0;
+  transform: scale(1.06);
+  filter: blur(6px);
+  pointer-events: none;
+}
+.intro-routes {
+  position: absolute;
+  inset: 0;
+}
+.intro-route {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--lane-route) 22%, transparent) 20%, color-mix(in srgb, var(--lane-route) 22%, transparent) 80%, transparent);
+  opacity: 0;
+  animation: intro-fade-in 1.2s ease 0.1s forwards;
+}
+.intro-packet {
+  position: absolute;
+  top: -2px;
+  left: -10%;
+  width: 70px;
+  height: 5px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent-teal));
+  box-shadow: 0 0 12px var(--accent-teal);
+  animation: intro-packet linear infinite;
+}
+.intro-route:nth-child(even) .intro-packet {
+  background: linear-gradient(90deg, transparent, var(--lane-packet));
+  box-shadow: 0 0 12px var(--lane-packet);
+}
+.intro-glow {
+  position: absolute;
+  width: 560px;
+  height: 560px;
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--accent-teal) 22%, transparent) 0%, transparent 65%);
+  animation: intro-pulse 4s ease-in-out infinite;
+}
+.intro-center {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.intro-mark {
+  width: clamp(72px, 12vw, 112px);
+  height: auto;
+  overflow: visible;
+  filter: drop-shadow(0 0 28px color-mix(in srgb, var(--accent-teal) 45%, transparent));
+}
+.intro-face {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: intro-face 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.intro-face-1 {
+  --from: translate(0, 40%);
+  animation-delay: 0.1s;
+}
+.intro-face-2 {
+  --from: translate(0, -60%);
+  animation-delay: 0.25s;
+}
+.intro-face-3 {
+  --from: translate(-60%, 20%);
+  animation-delay: 0.4s;
+}
+.intro-word {
+  margin: 22px 0 0;
+  font-size: clamp(64px, 14vw, 152px);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.045em;
+}
+.intro-letter {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.4em);
+  animation: intro-rise 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+.intro-tagline {
+  margin: 18px 0 0;
+  font-size: clamp(16px, 2.2vw, 22px);
+  color: var(--dark-text-secondary);
+  opacity: 0;
+  animation: intro-fade-in 0.9s ease 1.4s forwards;
+}
+.intro-hint {
+  position: absolute;
+  bottom: 48px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dark-text-secondary);
+  opacity: 0;
+  animation:
+    intro-fade-in 0.8s ease 2s forwards,
+    intro-blink 2.4s ease-in-out 2.8s infinite;
+}
+
+@keyframes intro-face {
+  from {
+    opacity: 0;
+    transform: var(--from) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes intro-rise {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes intro-fade-in {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes intro-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+@keyframes intro-pulse {
+  0%,
+  100% {
+    transform: scale(0.92);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.06);
+    opacity: 1;
+  }
+}
+@keyframes intro-packet {
+  from {
+    left: -10%;
+  }
+  to {
+    left: 110%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .intro,
+  .intro * {
+    animation: none !important;
+    transition: none !important;
+  }
+  .intro-face,
+  .intro-letter,
+  .intro-tagline,
+  .intro-hint,
+  .intro-route {
+    opacity: 1;
+    transform: none;
+  }
+  .intro-packet {
+    display: none;
+  }
 }
