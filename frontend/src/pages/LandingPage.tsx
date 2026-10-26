@@ -1,10 +1,10 @@
+import { useCallback, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Brand, BrandMark } from '../components/Brand';
 import { CheckIcon } from '../components/Icons';
+import { IntroSplash, shouldShowIntro } from '../components/landing/IntroSplash';
 import { PipelineIllustration, StackIllustration } from '../components/landing/PipelineIllustration';
 import { Pill, type Tone } from '../components/StatusBadge';
-
-const REPO = 'https://github.com/rupinderkaur1904/Webhook';
 
 const FACTS = [
   { title: '202 after commit', body: 'Events are persisted with their deliveries in one transaction before the API responds.' },
@@ -151,9 +151,6 @@ function SiteNav() {
           <a href="#engineering-notes">Engineering notes</a>
         </nav>
         <div className="lp-nav-actions">
-          <a href={REPO} className="lp-nav-github">
-            GitHub
-          </a>
           <Link to="/overview" className="lp-btn lp-btn-secondary">
             Open dashboard
           </Link>
@@ -178,16 +175,16 @@ function Hero() {
             <span className="lp-display-muted">accounted for.</span>
           </h1>
           <p className="lp-lede">
-            Accept an event once and it is committed to Postgres. Every attempt is signed, retried with backoff, and recorded. Anything that
-            still fails waits in a dead-letter queue until you fix the endpoint and replay it.
+            Send an event once and Relay makes sure it arrives. Every attempt is signed, retried with backoff and recorded, and anything
+            that still fails waits safely until you replay it.
           </p>
           <div className="lp-ctas">
             <a href="#how-it-works" className="lp-btn lp-btn-primary">
               See how delivery works
             </a>
-            <a href={REPO} className="lp-btn lp-btn-secondary">
-              Read the source
-            </a>
+            <Link to="/overview" className="lp-btn lp-btn-secondary">
+              Open dashboard
+            </Link>
           </div>
           <ul className="lp-checks">
             {['At-least-once delivery', 'HMAC-SHA256 signed', 'Crash-safe worker leases'].map((item) => (
@@ -213,7 +210,6 @@ function Hero() {
             </div>
             <div className="lp-float-foot">Next attempt in 2m 14s · Retry-After honoured</div>
           </div>
-          <p className="lp-art-caption">Illustration of the delivery pipeline. Not live data.</p>
         </div>
       </div>
       <div className="lp-facts">
@@ -265,8 +261,7 @@ function DashboardPreview() {
     <section className="lp-section lp-paper">
       <div className="lp-container">
         <SectionHeader kicker="01 — The dashboard" title="Open any delivery and see exactly what happened.">
-          Every attempt keeps its status code, latency, error and Retry-After. The dashboard reads that history straight from Postgres, so
-          what you see is what the worker recorded.
+          Every attempt keeps its status code, response time and error, so you always know why a webhook did or did not arrive.
         </SectionHeader>
         <div className="lp-window" aria-label="Screenshot of a delivery in the dashboard" role="img">
           <div className="lp-window-bar">
@@ -275,7 +270,7 @@ function DashboardPreview() {
               <span />
               <span />
             </span>
-            <span className="lp-window-url">localhost:5173/deliveries/7f3a9c21</span>
+            <span className="lp-window-url">relay / deliveries / 7f3a9c21</span>
           </div>
           <div className="lp-window-body">
             <aside className="lp-mock-nav">
@@ -364,9 +359,6 @@ function DashboardPreview() {
             </div>
           </div>
         </div>
-        <p className="lp-footnote">
-          Demo data in a real screen layout — delivery detail, attempt timeline and payload come from GET /api/v1/deliveries/{'{id}'}.
-        </p>
       </div>
     </section>
   );
@@ -564,7 +556,7 @@ function EngineeringNotes() {
     <section className="lp-section lp-paper-white" id="engineering-notes">
       <div className="lp-container">
         <SectionHeader kicker="05 — Engineering notes" title="The decisions behind the guarantees.">
-          Short versions of what the README explains in full.
+          The design choices that keep every delivery safe.
         </SectionHeader>
         <div className="lp-notes">
           {NOTES.map((note, i) => (
@@ -585,16 +577,10 @@ function FinalCta() {
     <section className="lp-section lp-paper lp-cta">
       <div className="lp-container lp-cta-grid">
         <div>
-          <h2 className="lp-h2">Read the code behind every guarantee.</h2>
-          <p className="lp-sub">
-            The README walks through each design decision, and the receiver simulator lets you break an endpoint on purpose and watch the
-            platform recover.
-          </p>
+          <h2 className="lp-h2">See every delivery for yourself.</h2>
+          <p className="lp-sub">Sign in to register endpoints, publish events and watch failed deliveries recover.</p>
           <div className="lp-ctas">
-            <a href={REPO} className="lp-btn lp-btn-ink">
-              View on GitHub
-            </a>
-            <Link to="/overview" className="lp-btn lp-btn-outline-ink">
+            <Link to="/overview" className="lp-btn lp-btn-ink">
               Open dashboard
             </Link>
           </div>
@@ -615,7 +601,7 @@ function Footer() {
               <BrandMark size={22} />
               <span className="brand-name">Relay</span>
             </span>
-            <p>A webhook delivery and reliability platform. Java 21, Spring Boot, PostgreSQL and React.</p>
+            <p>A webhook delivery and reliability platform.</p>
           </div>
           <div className="lp-footer-links">
             <div>
@@ -623,22 +609,18 @@ function Footer() {
               <a href="#how-it-works">How it works</a>
               <a href="#reliability">Reliability</a>
               <a href="#reliability-security">Security</a>
-              <Link to="/overview">Open dashboard</Link>
+              <a href="#engineering-notes">Engineering notes</a>
             </div>
             <div>
-              <p>Project</p>
-              <a href={REPO}>GitHub repository</a>
-              <a href={`${REPO}#readme`}>README</a>
-              <a href={`${REPO}/blob/main/docs/PLAN.md`}>Architecture plan</a>
+              <p>Use it</p>
+              <Link to="/overview">Open dashboard</Link>
               <a href="/swagger-ui.html">API reference</a>
             </div>
           </div>
         </div>
         <div className="lp-footer-bottom">
-          <span>Portfolio project. Illustrations and demo data are not live metrics.</span>
-          <a href={REPO} className="mono">
-            github.com/rupinderkaur1904/Webhook
-          </a>
+          <span>© {new Date().getFullYear()} Relay</span>
+          <span>Examples on this page are illustrations.</span>
         </div>
       </div>
     </footer>
@@ -647,8 +629,11 @@ function Footer() {
 
 /** The public landing page at `/`. Everything on it is static; the dashboard lives behind sign-in. */
 export function LandingPage() {
+  const [intro, setIntro] = useState(shouldShowIntro);
+  const closeIntro = useCallback(() => setIntro(false), []);
   return (
     <div className="landing">
+      {intro && <IntroSplash onDone={closeIntro} />}
       <SiteNav />
       <main>
         <Hero />

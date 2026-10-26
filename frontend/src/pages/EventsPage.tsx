@@ -26,7 +26,7 @@ export function EventsPage() {
     <div className="page">
       <PageHeader
         title="Events"
-        description="Every accepted event, newest first. Each fans out to one delivery per matching endpoint."
+        description="Every event received, newest first."
         actions={<Button onClick={() => setPublishing(true)}>Publish event</Button>}
       />
       <PublishEventModal opened={publishing} onClose={() => setPublishing(false)} />
